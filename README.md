@@ -1,2 +1,1 @@
-# writeup-watcher
-send a new writeup in medium to discord channel .
+install (time,schedule,BeautifulSoup,requests) with pip and enter the discord information in code and just runing . 
