@@ -26,4 +26,4 @@ jobs:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
       run: |
-        writeup-watcher.py
+        python3 writeup-watcher.py
