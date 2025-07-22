@@ -6,3 +6,5 @@ tweepy==4.11.0
 praw==7.6.0
 colorlog==6.7.0
 tqdm==4.64.1
+pytz
+nitter-scraper
