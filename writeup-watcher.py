@@ -170,7 +170,8 @@ def get_medium_urls(url):
 
 # Function to get URLs from X (Twitter)
 def get_twitter_urls():
-    nitter = Nitter()
+    nitter = NitterScraper()
+
     urls = set()
 
     for hashtag in hashtags:
@@ -200,7 +201,7 @@ def get_reddit_urls(keyword, limit=5):
         return set()
 reddit_urls = set()
 for keyword in hashtags:
-    reddit_urls.update(get_reddit_urls_pushshift_keyword_search(keyword))
+    reddit_urls.update(get_reddit_urls(keyword))
 
 
 # Function to get all URLs from all platforms
