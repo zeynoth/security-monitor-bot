@@ -258,18 +258,15 @@ def extract_image_from_url(url):
         return image_tag['content']
     
     return None
-
-# Send message to Discord with ASCII Art and content
+    
 def send_discord_message(webhook_url, message, title=None, image_url=None):
     logger.info("Sending message to Discord...")
     try:
         art = random.choice(ascii_art_options)
-        description = f"{art}\n{message}"
-        
-        # Truncate description to 4000 characters (Discord limit)
+        timestamp = datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S %Z")
+        description = f"{art}\n{message}\n\nPosted at: {timestamp}"
         if len(description) > 4000:
             description = description[:3990] + "..."
-
         data = {
             "embeds": [{
                 "title": title or "New Post on Multiple Platforms",
@@ -278,14 +275,39 @@ def send_discord_message(webhook_url, message, title=None, image_url=None):
                 "footer": {"text": "Security Updates by Bot"}
             }]
         }
-
         if image_url:
             data["embeds"][0]["image"] = {"url": image_url}
-        
         res = requests.post(webhook_url, json=data)
         res.raise_for_status()
     except requests.RequestException as e:
-        logger.error(f"Error sending message: {e}")
+        logger.error(f"Error sending message to Discord: {e}")
+# Send message to Discord with ASCII Art and content
+#def send_discord_message(webhook_url, message, title=None, image_url=None):
+ #   logger.info("Sending message to Discord...")
+  #  try:
+   #     art = random.choice(ascii_art_options)
+    #    description = f"{art}\n{message}"
+     #   
+      #  # Truncate description to 4000 characters (Discord limit)
+       # if len(description) > 4000:
+        #    description = description[:3990] + "..."
+#
+ #       data = {
+  #          "embeds": [{
+   #             "title": title or "New Post on Multiple Platforms",
+    #            "description": description,
+     #           "color": random.randint(0, 16777215),
+      #          "footer": {"text": "Security Updates by Bot"}
+       #     }]
+        #}
+#
+ #       if image_url:
+  #          data["embeds"][0]["image"] = {"url": image_url}
+   #     
+    #    res = requests.post(webhook_url, json=data)
+     #   res.raise_for_status()
+    #except requests.RequestException as e:
+     #   logger.error(f"Error sending message: {e}")
 
 
 # Send message to Telegram with ASCII Art and content
