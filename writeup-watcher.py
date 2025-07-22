@@ -6,7 +6,8 @@ import random
 import os
 import json
 from bs4 import BeautifulSoup
-from telegram import Bot, ParseMode, InputMediaPhoto
+from telegram import Bot, InputMediaPhoto
+from telegram.constants import ParseMode
 from datetime import datetime
 import pytz
 from tqdm import tqdm
