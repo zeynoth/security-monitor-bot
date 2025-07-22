@@ -11,8 +11,8 @@ from datetime import datetime
 import pytz
 from tqdm import tqdm
 import colorlog
-import tweepy
-import praw
+from pprint import pprint
+from nitter_scraper import NitterScraper
 
 # Configure logging with colorlog
 log_format = '%(log_color)s%(asctime)s - %(levelname)s - %(message)s'
@@ -31,45 +31,100 @@ TELEGRAM_CHAT_ID = ''  # Your Telegram Chat ID
 # Set your Discord webhook URL
 WEBHOOK_URL = ''  # Your Discord Webhook URL
 
-# Twitter API credentials (X)
-TWITTER_API_KEY = ''  # Your Twitter API key
-TWITTER_API_SECRET_KEY = ''  # Your Twitter API secret key
-TWITTER_ACCESS_TOKEN = ''  # Your Twitter Access Token
-TWITTER_ACCESS_TOKEN_SECRET = ''  # Your Twitter Access Token Secret
-
-# Reddit API credentials
-REDDIT_CLIENT_ID = ''  # Your Reddit Client ID
-REDDIT_SECRET = ''  # Your Reddit Secret
-REDDIT_USER_AGENT = ''  # Your Reddit User Agent
-REDDIT_USERNAME = ''  # Your Reddit Username
-REDDIT_PASSWORD = ''  # Your Reddit Password
 
 # Hashtags for Medium, X (Twitter), and Reddit scraping
 hashtags = [
     "owasp", "penetration-testing", "bug-hunting", "web-vulnerabilities", "xss", "sql-injection", 
-    "appsec", "bug-bounty", "hacking", "cybersecurity"
+    "appsec", "bug-bounty", "hacking", "cybersecurity", "infosec", "ethicalhacking", "redteam", 
+    "blueTeam", "securityresearch", "vulnerability", "pentest", "hacker", "cyberattack", 
+    "securecoding", "threatintelligence", "osint", "darkweb", "malware", "securityawareness", 
+    "vuln", "exploit", "networksecurity", "privacy", "firewall", "encryption", "dataprotection", 
+    "passwordsecurity", "zero-day", "ransomware", "phishing", "scada", "iotsecurity", 
+    "cloudsecurity", "penetrationtesting", "cyberresilience", "ethicalhacker", "hackingtools", 
+    "cyberdefense", "digitalforensics", "incidentresponse", "redteamers", "blueteamers", 
+    "cve", "bugbountytips", "webappsecurity", "securitytesting", "malwareanalysis", "databreach", 
+    "cryptography", "secops", "bughunter", "exploitdev", "exploitwriting", "payloads", 
+    "networkpenetrationtesting", "applicationsecurity", "cyberwarfare", "informationsecurity", 
+    "hackingnews", "securitybugs", "bountyhunter", "bugbountyprogram", "blackhat", 
+    "defcon", "darknet", "socialengineering", "phishingattack", "cyberethics", "systemsecurity", 
+    "dos", "ddos", "api-security", "secdevops", "webappvulns", "mobileappsecurity", 
+    "cyberattackprevention", "penetrationtest", "firewallsecurity", "informationsharing", 
+    "intrusiondetection", "networkdefense", "ciso", "infoseccommunity", "hackernews", 
+    "ethicalhackers", "webpenetrationtesting", "securenetwork", "securityresearcher", "openbugbounty", 
+    "exploitdevelopment", "websecurity", "bugbountytips", "datasecurity", "offensivecybersecurity", 
+    "securitymonitoring", "cybersecurityawareness", "rce", "lfi", "sqli", "csrf", "xssattack", 
+    "rcexploit", "path-traversal", "command-injection", "xssvulnerabilities", "csrfvulnerability", 
+    "local-file-inclusion", "remote-code-execution", "sqliattack", "auth-bypass", "authz-bypass", 
+    "insecure-deserialization", "xml-injection", "ddosvulnerability", "api-penetrationtesting", 
+    "http-headers", "session-fixation", "subdomain-takeover", "buffer-overflow", "heap-spraying", 
+    "smurf-attack", "bypass-csrf", "subdomain-enumeration", "reverse-shell", "webshell", 
+    "hardening-web-apps", "insecure-http-methods", "dns-poisoning", "code-injection", "ntlm-relay", 
+    "webshells", "os-command-injection", "access-control-issues", "ldap-injection", "api-vulnerabilities", 
+    "input-validation", "broken-authentication", "broken-cryptography", "dns-spoofing", "iot-exploits", 
+    "service-denial", "ssl-tls-vulnerabilities", "privilege-escalation", "race-condition", 
+    "multi-factor-authentication", "security-headers", "remote-file-inclusion", "denial-of-service", 
+    "brute-force-attack", "man-in-the-middle", "buffer-overflow-attack", "web-application-firewall", 
+    "password-cracking", "keylogger", "insecure-encryption", "fuzz-testing", "sqlmap", "jwt-exploit", 
+    "unauthorized-access", "debugging-flaws", "browser-hacking", "cookie-poisoning", "unauthenticated-access", 
+    "information-leakage", "misconfigured-permissions", "command-injection-vulnerability", "clickjacking", 
+    "cache-poisoning", "broken-links", "zombie-botnet", "trojan-horse", "ethical-hacker-tools", 
+    "penetration-testing-tools", "file-upload-vulnerabilities", "timing-attack", "xsrf", "zip-slip", 
+    "ajax-vulnerabilities", "unsafe-reflection", "session-fixation-attack", "server-side-request-forgery", 
+    "csrf-attack", "spf-dkim-dmarc", "session-hijacking", "hmac", "sid-stealing", "spoofing-attack", 
+    "cross-site-attack", "click-fraud", "client-side-injection", "cookie-hijacking", "mobile-vulnerabilities", 
+    "mobile-phishing", "encrypted-traffic-hacking", "android-vulnerabilities", "ios-vulnerabilities", 
+    "application-tampering", "web-app-attack", "mobile-app-attack", "web-app-bug-bounty", 
+    "website-hacking", "browser-exploit", "xml-exploits", "dangerous-default-settings", 
+    "botnet-attack", "sqli-payload", "unauthorized-privileges", "domain-spoofing", "script-injection", 
+    "cross-origin-resource-sharing", "ssl-certificate-errors", "websocket-vulnerabilities", 
+    "buffer-overflow-exploit", "toctou-attack", "time-based-sql-injection", "tcp-dump", "caching-vulnerabilities", 
+    "app-vulnerability-scan", "security-lifecycle", "patch-management", "data-leakage", "poisoning-attack", 
+    "phishing-scam", "ldap-attack", "protocol-vulnerabilities", "spoofing-defense", "stealth-hacking", 
+    "internet-of-things-vulnerability", "iot-botnets", "smb-exploitation", "http-response-splitting", 
+    "reverse-engineering-tools", "xss-exploit", "browser-exploits", "lfi-exploit", "api-fuzzing", 
+    "automation-in-hacking", "elevation-of-privileges", "timing-analysis", "api-key-leakage", 
+    "application-layer-attack", "buffer-exploit", "security-logging", "microservice-vulnerabilities", 
+    "sensitive-data-exposure", "input-sanitization", "misconfigured-database", "persistent-xss", 
+    "user-agent-manipulation", "dynamic-analysis", "python-exploit", "log-injection", "insecure-api", 
+    "spike-detection", "active-directory-exploitation", "open-redirect", "json-injection", "excessive-logging", 
+    "dns-rebinding", "caching-attack", "reverse-engineer", "clickjacking-protection", "parameter-pollution", 
+    "api-bypass", "certificate-pinning", "java-deserialization", "whitelisting-bypass", 
+    "cloud-misconfigurations", "external-service-interaction", "secret-management", "buffer-overflow-attack", 
+    "restful-api-vulnerability", "cybersecurity-testing", "dns-dos", "over-the-air-exploits", "shellshock-exploit", 
+    "bugbounty", "bugbountytips", "bughunter", "bugbountyhunter", "bugbountypost", "bugbountyhunting", 
+    "bugbountytips", "bugbountylife", "bugbountyresearcher", "bugbountyprograms", "bugbountytutorial", 
+    "bugbountyopportunity", "bugbountyreport", "bugbountysuccess", "bugbountyresources", "bugbountyexploit", 
+    "bugbountyplatform", "bugbountykills", "bugbountytipsandtricks", "bugbountyninja", "bugbountyresearch", 
+    "bugbountydiscovery", "bugbountytipsandtricks", "bugbountyhacker", "bugbountytools", "bugbountyscout", 
+    "bugbountybug", "bugbountyvulnerability", "bugbountyhunter", "bugbountytutorial", "bugbountytips2025", 
+    "bugbountyexploitdev", "bugbountysolutions", "bugbountystories", "bugbountytracking", "bugbountygrind", 
+    "bugbountyplatforms", "bugbountysuccessstories", "bugbountylearning", "bugbountyhalloffame", 
+    "bugbountysubmission", "bugbountyappsec", "bugbountytalk", "bugbountyresearcher", "bugbountymethods", 
+    "bugbountyadvice", "bugbountyprogram", "bugbountystory", "bugbountyposts", "bugbountyeverywhere", 
+    "bugbountytipsandtricks", "bugbountykills", "bugbountydiscovery", "bugbountyexploitdev", "bugbountyhacks"
 ]
+
 
 # ASCII Art Options
 ascii_art_options = [
     '''
-    _________
-    /        \\
-   |  BOOM!  |
-    \________/
-    ''',
-    '''
-     _______
-    /       \\
-   |  ALERT |
-    \\_______/
-    ''',
-    '''
-     _______
-    |       |
-    |  🚨   |
-    |       |
-    \\_______/
+⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠿⠿⠿⠿⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣿⣿⣿⣿⣿⣿⠟⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠉⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣿⣿⣿⣿⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢺⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣿⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠆⠜⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣿⣿⠿⠿⠛⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠻⣿⣿⣿⣿⣿
+⣿⣿⡏⠁⠀⠀⠀⠀⠀⣀⣠⣤⣤⣶⣶⣶⣶⣶⣦⣤⡄⠀⠀⠀⠀⢀⣴⣿⣿⣿⣿⣿
+⣿⣿⣷⣄⠀⠀⠀⢠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢿⡧⠇⢀⣤⣶⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣿⣿⣿⣿⣾⣮⣭⣿⡻⣽⣒⠀⣤⣜⣭⠐⢐⣒⠢⢰⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣿⣿⣿⣿⣿⣏⣿⣿⣿⣿⣿⣿⡟⣾⣿⠂⢈⢿⣷⣞⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣿⣿⣿⣿⣿⣿⣽⣿⣿⣷⣶⣾⡿⠿⣿⠗⠈⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠻⠋⠉⠑⠀⠀⢘⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣿⣿⣿⣿⣿⡿⠟⢹⣿⣿⡇⢀⣶⣶⠴⠶⠀⠀⢽⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣿⣿⣿⣿⡿⠀⠀⢸⣿⣿⠀⠀⠣⠀⠀⠀⠀⠀⡟⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣿⡿⠟⠋⠀⠀⠀⠀⠹⣿⣧⣀⠀⠀⠀⠀⡀⣴⠁⢘⡙⢿⣿⣿⣿⣿⣿⣿⣿⣿
+⠉⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⢿⠗⠂⠄⠀⣴⡟⠀⠀⡃⠀⠉⠉⠟⡿⣿⣿⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢷⠾⠛⠂⢹⠀⠀⠀⢡⠀⠀⠀⠀⠀⠙⠛⠿⢿
+
     '''
 ]
 
@@ -114,27 +169,38 @@ def get_medium_urls(url):
 
 # Function to get URLs from X (Twitter)
 def get_twitter_urls():
-    auth = tweepy.OAuthHandler(TWITTER_API_KEY, TWITTER_API_SECRET_KEY)
-    auth.set_access_token(TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET)
-    api = tweepy.API(auth)
-    
+    nitter = Nitter()
     urls = set()
+
     for hashtag in hashtags:
-        tweets = api.search(q=f"#{hashtag}", lang="en", result_type="recent", count=5)
-        for tweet in tweets:
-            urls.add(f"https://twitter.com/{tweet.user.screen_name}/status/{tweet.id}")
+        try:
+            tweets = nitter.get_hashtag_tweets(hashtag)
+            for tweet in tweets[:5]:  # Limit to 5 recent tweets per hashtag
+                urls.add(tweet.url)
+        except Exception as e:
+            logger.error(f"Error fetching tweets for #{hashtag}: {e}")
+    
     return urls
 
 # Function to get Reddit posts
-def get_reddit_urls():
-    reddit = praw.Reddit(client_id=REDDIT_CLIENT_ID, client_secret=REDDIT_SECRET, 
-                         user_agent=REDDIT_USER_AGENT, username=REDDIT_USERNAME, password=REDDIT_PASSWORD)
-    
-    urls = set()
-    for subreddit in ['netsec', 'bugbounty', 'OWASP']:
-        for submission in reddit.subreddit(subreddit).new(limit=5):
-            urls.add(submission.url)
-    return urls
+def get_reddit_urls(keyword, limit=5):
+    url = f"https://api.pushshift.io/reddit/search/submission/?q={keyword}&size={limit}&sort=desc&sort_type=created_utc"
+    try:
+        res = requests.get(url, timeout=10)
+        res.raise_for_status()
+        data = res.json()
+        urls = set()
+        for post in data.get('data', []):
+            if 'url' in post:
+                urls.add(post['url'])
+        return urls
+    except Exception as e:
+        logger.error(f"Error fetching Pushshift data for keyword '{keyword}': {e}")
+        return set()
+reddit_urls = set()
+for keyword in hashtags:
+    reddit_urls.update(get_reddit_urls_pushshift_keyword_search(keyword))
+
 
 # Function to get all URLs from all platforms
 def get_urls_from_all_sources():
