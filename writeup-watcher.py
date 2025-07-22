@@ -185,32 +185,33 @@ def get_twitter_urls():
     return urls
 
 # Function to get Reddit posts
-def get_reddit_urls(keyword, limit=5):
-    url = f"https://api.pushshift.io/reddit/search/submission/?q={keyword}&size={limit}&sort=desc&sort_type=created_utc"
-    try:
-        res = requests.get(url, timeout=10)
-        res.raise_for_status()
-        data = res.json()
-        urls = set()
-        for post in data.get('data', []):
-            if 'url' in post:
-                urls.add(post['url'])
-        return urls
-    except Exception as e:
-        logger.error(f"Error fetching Pushshift data for keyword '{keyword}': {e}")
-        return set()
-reddit_urls = set()
-for keyword in hashtags:
-    reddit_urls.update(get_reddit_urls(keyword))
+#def get_reddit_urls(keyword, limit=5):
+#    url = f"https://api.pushshift.io/reddit/search/submission/?q={keyword}&size={limit}&sort=desc&sort_type=created_utc"
+#    try:
+#        res = requests.get(url, timeout=10)
+#        res.raise_for_status()
+#        data = res.json()
+#        urls = set()
+#        for post in data.get('data', []):
+#            if 'url' in post:
+#                urls.add(post['url'])
+#        return urls
+#    except Exception as e:
+#        logger.error(f"Error fetching Pushshift data for keyword '{keyword}': {e}")
+#        return set()
+#reddit_urls = set()
+#for keyword in hashtags:
+#    reddit_urls.update(get_reddit_urls(keyword))
 
 
 # Function to get all URLs from all platforms
 def get_urls_from_all_sources():
     medium_urls = get_medium_urls("https://medium.com/tag/owasp/latest")
     twitter_urls = get_twitter_urls()
-    reddit_urls = get_reddit_urls()
+   # reddit_urls = get_reddit_urls()
     
-    all_urls = medium_urls.union(twitter_urls).union(reddit_urls)
+    all_urls = medium_urls.union(twitter_urls)
+    #.union(reddit_urls)
     return all_urls
 
 # Function to extract content (first 3 lines) from a Medium post
