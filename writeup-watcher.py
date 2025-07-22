@@ -145,7 +145,6 @@ BACKOFF_TIME = 2  # seconds
 TIMEZONE = pytz.timezone('UTC')
 
 # Function to implement exponential backoff retries
-
 def fetch_url(url, max_retries=5, backoff_factor=1.5):
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; badass-bot/1.0)"
@@ -160,20 +159,32 @@ def fetch_url(url, max_retries=5, backoff_factor=1.5):
 
         except requests.exceptions.HTTPError as e:
             if response.status_code == 429:
-                wait_time = backoff_factor ** retries
-                print(f"🔥 Rate limited (429). Retry #{retries+1} after {wait_time:.1f} seconds...")
+                wait_time = backoff_factor ** retries  # Exponential backoff
+                logger.warning(f"🔥 Rate limited (429). Retry #{retries + 1} after {wait_time:.1f} seconds...")
                 time.sleep(wait_time)
                 retries += 1
             else:
-                # Other HTTP errors, raise immediately
-                raise
+                # For other HTTP errors, log the error and raise it
+                logger.error(f"HTTP error {response.status_code}: {e}")
+                raise  # Reraise the exception
 
         except requests.exceptions.RequestException as e:
-            # Network error or something else, raise or handle as needed
-            raise
+            # Network error or other types of request failure
+            logger.error(f"Request failed: {e}")
+            raise  # Reraise the exception
     
+    # If max retries are exhausted, raise an exception
+    logger.error(f"Failed to fetch {url} after {max_retries} retries due to rate limiting.")
     raise Exception(f"Failed to fetch {url} after {max_retries} retries due to rate limiting.")
 
+# Example usage:
+try:
+    url = "https://example.com/api"
+    response = fetch_url(url)
+    print(f"Response: {response.text[:200]}")  # Print first 200 chars of response
+except Exception as e:
+    print(f"Error: {e}")
+    
 # Function to get URLs from Medium
 def get_medium_urls(url):
     res = fetch_url(url)
@@ -223,7 +234,8 @@ def get_twitter_urls(max_concurrent=5):
         scraper = None
         instance = random.choice(nitter_instances)  # Random instance for load balancing
         try:
-            scraper = Nitter(log_level=1, skip_instance_check=False, instance=instance)
+            scraper = Nitter(log_level=1, skip_instance_check=False)
+            scraper.set_instance(instance)
             logger.info(f"⚡ Locked onto Nitter instance: {instance}")
             
             # Use ThreadPoolExecutor to parallelize hashtag scraping
