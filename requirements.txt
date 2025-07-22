@@ -12,3 +12,6 @@ markupsafe==2.0.1
 jinja2==2.11.3
 lxml_html_clean
 ntscraper
+requests
+beautifulsoup4
+aiohttp
