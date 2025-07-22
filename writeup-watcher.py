@@ -289,7 +289,7 @@ def send_telegram_message(message, image_url=None):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         logger.error("Telegram token or chat ID not set! Cannot send Telegram message.")
         return
-    else
+    else:
         logger.info("Sending message to Telegram...")
     try:
         bot = Bot(token=TELEGRAM_TOKEN)
