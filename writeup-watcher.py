@@ -242,6 +242,7 @@ def extract_image_from_url(url):
 
 # Send message to Discord with ASCII Art and content
 def send_discord_message(webhook_url, message, title=None, image_url=None):
+    logger.info("Sending message to Discord...")
     try:
         art = random.choice(ascii_art_options)  # Randomly choose an ASCII art
         data = {
@@ -266,6 +267,7 @@ def send_discord_message(webhook_url, message, title=None, image_url=None):
 
 # Send message to Telegram with ASCII Art and content
 def send_telegram_message(message, image_url=None):
+    logger.info("Sending message to Telegram...")
     try:
         bot = Bot(token=TELEGRAM_TOKEN)
         art = random.choice(ascii_art_options)  # Random ASCII Art
@@ -289,6 +291,9 @@ def send_telegram_message(message, image_url=None):
 def check_for_updates():
     global stored_urls
     new_urls = get_urls_from_all_sources()
+    logger.info(f"Fetched {len(new_urls)} total URLs")
+    new_posts = new_urls - stored_urls
+    logger.info(f"New posts count: {len(new_posts)}")
     
     # Initialize progress bar with tqdm
     with tqdm(total=len(new_urls), desc="Processing new posts") as pbar:
@@ -330,7 +335,7 @@ def save_stored_urls():
 # Main bot loop
 if __name__ == '__main__':
     stored_urls = load_stored_urls()  # Load stored URLs from file on start
-    schedule_updates(interval_minutes=20)  # Adjust this interval as needed
+    schedule_updates(interval_minutes=10)  # Adjust this interval as needed
     
     try:
         while True:
@@ -339,3 +344,7 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logger.info("Bot interrupted, saving stored URLs.")
         save_stored_urls()  # Save URLs when stopping the bot
+    # Test sending messages manually once on startup:
+    test_message = "This is a test message from your bot."
+    send_discord_message(WEBHOOK_URL, test_message, title="Test Message")
+    send_telegram_message(test_message)
