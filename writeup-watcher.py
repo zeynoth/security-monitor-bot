@@ -3,6 +3,8 @@ import logging
 import schedule
 import time
 import random
+import asyncio
+from telegram import Bot
 import os
 import json
 from bs4 import BeautifulSoup
@@ -261,52 +263,54 @@ def extract_image_from_url(url):
 def send_discord_message(webhook_url, message, title=None, image_url=None):
     logger.info("Sending message to Discord...")
     try:
-        art = random.choice(ascii_art_options)  # Randomly choose an ASCII art
+        art = random.choice(ascii_art_options)
+        description = f"{art}\n{message}"
+        
+        # Truncate description to 4000 characters (Discord limit)
+        if len(description) > 4000:
+            description = description[:3990] + "..."
+
         data = {
             "embeds": [{
                 "title": title or "New Post on Multiple Platforms",
-                "description": f"{art}\n{message}",
-                "color": random.randint(0, 16777215),  # Random color
-                "url": message,
-                "footer": {
-                    "text": "Security Updates by Bot"
-                }
+                "description": description,
+                "color": random.randint(0, 16777215),
+                "footer": {"text": "Security Updates by Bot"}
             }]
         }
-        
+
         if image_url:
             data["embeds"][0]["image"] = {"url": image_url}
         
         res = requests.post(webhook_url, json=data)
-        res.raise_for_status()  # Raise an exception for 4xx/5xx responses
+        res.raise_for_status()
     except requests.RequestException as e:
         logger.error(f"Error sending message: {e}")
 
+
 # Send message to Telegram with ASCII Art and content
-def send_telegram_message(message, image_url=None):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        logger.error("Telegram token or chat ID not set! Cannot send Telegram message.")
-        return
-    else:
-        logger.info("Sending message to Telegram...")
+async def send_telegram_message(message, image_url=None):
+    logger.info("Sending message to Telegram...")
     try:
-        bot = Bot(token=TELEGRAM_TOKEN)
-        art = random.choice(ascii_art_options)  # Random ASCII Art
+        bot = Bot(token=os.getenv("TELEGRAM_TOKEN"))
+        art = random.choice(ascii_art_options)
+        
         if image_url:
-            bot.send_photo(
-                chat_id=TELEGRAM_CHAT_ID,
+            await bot.send_photo(
+                chat_id=os.getenv("TELEGRAM_CHAT_ID"),
                 photo=image_url,
                 caption=f"{art}\n{message}",
                 parse_mode=ParseMode.MARKDOWN
             )
         else:
-            bot.send_message(
-                chat_id=TELEGRAM_CHAT_ID,
+            await bot.send_message(
+                chat_id=os.getenv("TELEGRAM_CHAT_ID"),
                 text=f"{art}\n{message}",
                 parse_mode=ParseMode.MARKDOWN
             )
     except Exception as e:
         logger.error(f"Error sending message to Telegram: {e}")
+
 
 # Main bot loop
 def check_for_updates():
@@ -332,7 +336,7 @@ def check_for_updates():
                 
                 # Send message to both Discord and Telegram
                 send_discord_message(WEBHOOK_URL, f"{content}\n\n{message}", title, image_url)
-                send_telegram_message(f"{content}\n\n{message}", image_url)
+                asyncio.run(send_telegram_message(f"{content}\n\n{message}", image_url))
                 pbar.update(1)
         else:
             logger.info("No new posts found.")
@@ -357,7 +361,7 @@ def save_stored_urls():
 if __name__ == '__main__':
     test_message = "This is a test message from your bot."
     send_discord_message(WEBHOOK_URL, test_message, title="Test Message")
-    send_telegram_message(test_message)
+    asyncio.run(send_telegram_message(test_message))
     stored_urls = load_stored_urls()  # Load stored URLs from file on start
     schedule_updates(interval_minutes=10)  # Adjust this interval as needed
     cycles = 0
@@ -375,4 +379,4 @@ if __name__ == '__main__':
     # Test sending messages manually once on startup:
     test_message = "This is a test message from your bot."
     send_discord_message(WEBHOOK_URL, test_message, title="Test Message")
-    send_telegram_message(test_message)
+    asyncio.run(send_telegram_message(test_message))
