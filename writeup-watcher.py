@@ -15,8 +15,13 @@ import pytz
 from tqdm import tqdm
 import colorlog
 from pprint import pprint
-from nitter_scraper import NitterScraper
-
+#from nitter_scraper import NitterScraper
+from ntscraper import Nitter
+import random
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+import traceback
 # Configure logging with colorlog
 log_format = "%(asctime)s - %(levelname)s - %(message)s"
 logging.basicConfig(level=logging.INFO, format=log_format)
@@ -185,22 +190,58 @@ def get_medium_urls(url):
     return urls
 
 # Function to get URLs from X (Twitter)
-def get_twitter_urls():
+def get_twitter_urls(max_concurrent=5):
+    """
+    Unleash the beast: Scrape Twitter URLs for hashtags like a cyber ninja.
+    Uses multiple Nitter instances, async power, and thread pooling for max speed.
+    """
     urls = set()
+    nitter_instances = [
+        "https://nitter.net",
+        "https://nitter.snopyta.org",
+        "https://nitter.1d4.us",
+        # Add more instances or use a local one: "http://localhost:8080"
+    ]
+    
+    async def scrape_hashtag(scraper, hashtag):
+        """Helper to scrape a single hashtag with swagger."""
+        try:
+            logger.info(f"🔫 Blasting #{hashtag} with Nitter firepower...")
+            tweets_data = await asyncio.get_event_loop().run_in_executor(
+                None, partial(scraper.get_tweets, hashtag, mode='hashtag', number=5)
+            )
+            for tweet in tweets_data['tweets'][:5]:
+                urls.add(tweet['link'])
+                logger.debug(f"🎯 Sniped tweet: {tweet['link']}")
+            return True
+        except Exception as e:
+            logger.error(f"[🔥 ERROR] #{hashtag} took a hit: {e}\n{traceback.format_exc()}")
+            return False
 
-    try:
-        with NitterScraper() as nitter:
-            for hashtag in hashtags:
-                try:
-                    # Grab the freshest 5 tweets, no mercy
-                    tweets = nitter.get_hashtag_tweets(hashtag)
-                    for tweet in tweets[:5]:
-                        urls.add(tweet.url)
-                except Exception as e:
-                    logger.error(f"[🔥 ERROR] Failed to fetch tweets for #{hashtag}: {e}")
-    except Exception as e:
-        logger.critical(f"[💥 FATAL] Could not initialize NitterScraper: {e}")
+    async def main_scrape():
+        """Orchestrate the chaos with async and thread pooling."""
+        scraper = None
+        instance = random.choice(nitter_instances)  # Random instance for load balancing
+        try:
+            scraper = Nitter(log_level=1, skip_instance_check=False, instance=instance)
+            logger.info(f"⚡ Locked onto Nitter instance: {instance}")
+            
+            # Use ThreadPoolExecutor to parallelize hashtag scraping
+            with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+                tasks = [scrape_hashtag(scraper, hashtag) for hashtag in hashtags]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                success_count = sum(1 for r in results if r is True)
+                logger.info(f"🏆 Mission stats: {success_count}/{len(hashtags)} hashtags scraped successfully")
+        except Exception as e:
+            logger.critical(f"[💥 FATAL] Nitter initialization obliterated: {e}\n{traceback.format_exc()}")
+        finally:
+            if scraper:
+                scraper.close()
+                logger.info("🧹 Cleaned up Nitter resources like a pro.")
 
+    # Run the async scrape in a sync function
+    asyncio.run(main_scrape())
+    logger.info(f"💪 Harvested {len(urls)} unique tweet URLs. Ready for domination!")
     return urls
 
 # Function to get Reddit posts
