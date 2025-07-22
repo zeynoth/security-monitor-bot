@@ -16,7 +16,7 @@ from pprint import pprint
 from nitter_scraper import NitterScraper
 
 # Configure logging with colorlog
-log_format = '%(log_color)s%(asctime)s - %(levelname)s - %(message)s'
+log_format = "%(asctime)s - %(levelname)s - %(message)s"
 logging.basicConfig(level=logging.INFO, format=log_format)
 logger = logging.getLogger()
 
@@ -140,18 +140,34 @@ BACKOFF_TIME = 2  # seconds
 TIMEZONE = pytz.timezone('UTC')
 
 # Function to implement exponential backoff retries
-def fetch_url(url, retries=MAX_RETRIES):
-    for i in range(retries):
+
+def fetch_url(url, max_retries=5, backoff_factor=1.5):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; badass-bot/1.0)"
+    }
+    retries = 0
+    
+    while retries < max_retries:
         try:
-            res = requests.get(url, timeout=10)
-            res.raise_for_status()
-            return res
-        except requests.RequestException as e:
-            logger.error(f"Error fetching {url}: {e}")
-            wait_time = BACKOFF_TIME * (2 ** i)  # Exponential backoff
-            logger.info(f"Retrying in {wait_time} seconds...")
-            time.sleep(wait_time)
-    return None
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()  # Raise HTTPError for bad responses (4xx, 5xx)
+            return response  # Success! Return the response content
+
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 429:
+                wait_time = backoff_factor ** retries
+                print(f"🔥 Rate limited (429). Retry #{retries+1} after {wait_time:.1f} seconds...")
+                time.sleep(wait_time)
+                retries += 1
+            else:
+                # Other HTTP errors, raise immediately
+                raise
+
+        except requests.exceptions.RequestException as e:
+            # Network error or something else, raise or handle as needed
+            raise
+    
+    raise Exception(f"Failed to fetch {url} after {max_retries} retries due to rate limiting.")
 
 # Function to get URLs from Medium
 def get_medium_urls(url):
@@ -170,18 +186,21 @@ def get_medium_urls(url):
 
 # Function to get URLs from X (Twitter)
 def get_twitter_urls():
-    nitter = NitterScraper()
-
     urls = set()
 
-    for hashtag in hashtags:
-        try:
-            tweets = nitter.get_hashtag_tweets(hashtag)
-            for tweet in tweets[:5]:  # Limit to 5 recent tweets per hashtag
-                urls.add(tweet.url)
-        except Exception as e:
-            logger.error(f"Error fetching tweets for #{hashtag}: {e}")
-    
+    try:
+        with NitterScraper() as nitter:
+            for hashtag in hashtags:
+                try:
+                    # Grab the freshest 5 tweets, no mercy
+                    tweets = nitter.get_hashtag_tweets(hashtag)
+                    for tweet in tweets[:5]:
+                        urls.add(tweet.url)
+                except Exception as e:
+                    logger.error(f"[🔥 ERROR] Failed to fetch tweets for #{hashtag}: {e}")
+    except Exception as e:
+        logger.critical(f"[💥 FATAL] Could not initialize NitterScraper: {e}")
+
     return urls
 
 # Function to get Reddit posts
@@ -267,7 +286,11 @@ def send_discord_message(webhook_url, message, title=None, image_url=None):
 
 # Send message to Telegram with ASCII Art and content
 def send_telegram_message(message, image_url=None):
-    logger.info("Sending message to Telegram...")
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        logger.error("Telegram token or chat ID not set! Cannot send Telegram message.")
+        return
+    else
+        logger.info("Sending message to Telegram...")
     try:
         bot = Bot(token=TELEGRAM_TOKEN)
         art = random.choice(ascii_art_options)  # Random ASCII Art
@@ -334,13 +357,20 @@ def save_stored_urls():
 
 # Main bot loop
 if __name__ == '__main__':
+    test_message = "This is a test message from your bot."
+    send_discord_message(WEBHOOK_URL, test_message, title="Test Message")
+    send_telegram_message(test_message)
     stored_urls = load_stored_urls()  # Load stored URLs from file on start
     schedule_updates(interval_minutes=10)  # Adjust this interval as needed
+    cycles = 0
     
     try:
         while True:
             schedule.run_pending()
             time.sleep(1)
+            cycles +=1
+            if cycles % 30 == 0:  # Save every ~5 mins (if interval is 10 sec)
+                save_stored_urls()
     except KeyboardInterrupt:
         logger.info("Bot interrupted, saving stored URLs.")
         save_stored_urls()  # Save URLs when stopping the bot
