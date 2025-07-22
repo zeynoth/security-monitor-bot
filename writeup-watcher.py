@@ -25,12 +25,10 @@ log_handler = colorlog.StreamHandler()
 log_handler.setFormatter(colorlog.ColoredFormatter(log_format))
 logger.addHandler(log_handler)
 
-# Set your Telegram bot token and chat ID
-TELEGRAM_TOKEN = ''  # Your Telegram Bot Token
-TELEGRAM_CHAT_ID = ''  # Your Telegram Chat ID
-
-# Set your Discord webhook URL
-WEBHOOK_URL = ''  # Your Discord Webhook URL
+# Set your Telegram bot token and chat ID and your Discord webhook URL
+WEBHOOK_URL = os.getenv('WEBHOOK_URL') # Your Discord Webhook URL
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN') # Your Telegram Bot Token
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID') # Your Telegram Chat ID
 
 
 # Hashtags for Medium, X (Twitter), and Reddit scraping
