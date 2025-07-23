@@ -37,7 +37,7 @@ TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')  # Your Telegram Chat ID
 
 # Hashtags for Medium, X (Twitter), and Reddit scraping
 hashtags = [
-    "owasp", "penetration-testing", "bug-hunting", "web-vulnerabilities", "xss", "sql-injection",
+    "owasp","Cross Site Scripting", "penetration-testing", "bug-hunting", "web-vulnerabilities", "xss", "sql-injection",
     "appsec", "bug-bounty", "hacking", "cybersecurity", "infosec", "ethicalhacking", "redteam",
     "blueTeam", "securityresearch", "vulnerability", "pentest", "hacker", "cyberattack",
     "securecoding", "threatintelligence", "osint", "darkweb", "malware", "securityawareness",
@@ -105,6 +105,27 @@ hashtags = [
     "bugbountysubmission", "bugbountyappsec", "bugbountytalk", "bugbountyresearcher", "bugbountymethods",
     "bugbountyadvice", "bugbountyprogram", "bugbountystory", "bugbountyposts", "bugbountyeverywhere",
     "bugbountytipsandtricks", "bugbountykills", "bugbountydiscovery", "bugbountyexploitdev", "bugbountyhacks"
+]
+PRIORITY_KEYWORDS = [
+    "exploit", "vulnerability", "hack", "breach", "leak", "malware", "ransomware", "spyware",
+    "trojan", "rootkit", "phishing", "social engineering", "zero-day", "0day", "backdoor",
+    "ddos", "botnet", "payload", "obfuscation", "command and control", "c2", "keylogger",
+    "credential theft", "password dump", "privilege escalation", "lateral movement", "exfiltration",
+    "sql injection", "xss", "cross-site scripting", "csrf", "session hijacking", "clickjacking",
+    "buffer overflow", "heap spray", "format string", "directory traversal", "remote code execution",
+    "rce", "lpe", "arbitrary code", "shellcode", "dns tunneling", "ip spoofing", "mac spoofing",
+    "mitm", "man in the middle", "reconnaissance", "footprinting", "nmap", "metasploit",
+    "burp suite", "wireshark", "packet sniffing", "spoof", "inject", "injection", "compromise",
+    "breached data", "brute force", "dictionary attack", "rainbow table", "hash cracking",
+    "crack", "bypass", "evasion", "firewall bypass", "ids evasion", "port scan", "scanning",
+    "enumeration", "information disclosure", "threat", "attack vector", "exposure", "cve",
+    "cisa alert", "cirt", "ioc", "indicator of compromise", "tactics", "techniques", "procedures",
+    "ttp", "kill chain", "mitre", "att&ck", "threat actor", "apt", "state-sponsored", "cyberwar",
+    "cybercrime", "dark web", "underground", "black hat", "red team", "penetration testing",
+    "pentest", "vuln", "vulns", "cwe", "exploit-db", "exploit kit", "exploit pack", "weaponize",
+    "dropper", "stager", "loader", "malicious", "shell", "reverse shell", "bind shell",
+    "remote shell", "telnet", "ssh brute", "ftp attack", "x11 attack", "vnc intrusion",
+    "remote desktop exploit", "rdp", "admin access", "unauthorized access", "privilege abuse",
 ]
 
 # Global variables to store URLs, posts, and cache
@@ -257,83 +278,184 @@ def save_cache():
         except Exception as e:
             logger.error(f"Failed to save {CACHE_FILE}: {e}")
             raise
-
-# Async generator for Medium URLs and posts
-async def get_medium_urls_and_posts_async(url="https://medium.com/tag/owasp/latest"):
+async def get_medium_urls_and_posts_async():
     global medium_urls, medium_posts
-    logger.info(f"Fetching Medium data from {url}")
-    try:
-        async with aiohttp.ClientSession() as session:
-            res = await fetch_url_async(url, session)
-            if not res:
-                logger.warning(f"No response received from {url}")
-                return
-            
-            soup = BeautifulSoup(res.content, "html.parser")
-            links = soup.find_all("a", href=True)
-            urls = set()
+    medium_urls = set()
+    medium_posts = []
+
+    # برای هر تگ، سه نوع URL می‌سازیم: recommended، latest و archive
+    base_urls = [
+        f"https://medium.com/tag/{{tag}}/recommended",
+        f"https://medium.com/tag/{{tag}}/latest",
+        f"https://medium.com/tag/{{tag}}/archive"
+    ]
+
+    async with aiohttp.ClientSession() as session:
+        for tag in hashtags:
+            for base_url in base_urls:
+                url = base_url.format(tag=tag)
+                logger.info(f"Fetching Medium data from {url}")
+                try:
+                    res = await fetch_url_async(url, session)
+                    if not res:
+                        logger.warning(f"No response received from {url}")
+                        continue
+
+                    soup = BeautifulSoup(res.content, "html.parser")
+                    # پیدا کردن تگ‌های <a> مربوط به پست‌ها با کلاس خاص
+                    post_links = soup.find_all("a", class_="ag ah ai hl ak al am an ao ap aq ar as at au")
+
+                    for link in post_links:
+                        try:
+                            # استخراج عنوان از <h2>
+                            title_tag = link.find("h2")
+                            title = title_tag.text.strip() if title_tag else "No title"
+
+                            # استخراج توضیحات از <h3>
+                            desc_tag = link.find("h3")
+                            description = desc_tag.text.strip() if desc_tag else "No description"
+
+                            # استخراج لینک پست
+                            href = link.get("href", "")
+                            if href and href.startswith("/@"):
+                                post_url = f"https://medium.com{href.split('?')[0]}"  # حذف پارامترهای اضافی
+                                urls.add(post_url)
+                                yield {"type": "url", "data": post_url}  # Yield URL immediately
+                                logger.debug(f"Found Medium URL: {post_url}")
+
+                                # پیدا کردن نام نویسنده
+                                author_tag = link.find_previous("a", class_="ag ah ai hl ak al am an ao ap aq ar as ni ac r")
+                                author = author_tag.find("p").text.strip() if author_tag and author_tag.find("p") else "Unknown Author"
+
+                                # گرفتن محتوای پست (اختیاری، برای فیلتر کردن با کلمات کلیدی)
+                                post_res = await fetch_url_async(post_url, session)
+                                post_soup = BeautifulSoup(post_res.content, "html.parser")
+                                paragraphs = post_soup.find_all("p")
+                                content = "\n".join([para.get_text() for para in paragraphs[:3]])
+
+                                # گرفتن تصویر (اولویت: تصویر پست، سپس تصویر نویسنده)
+                                image_tag = post_soup.find("meta", property="og:image")
+                                image_url = image_tag["content"] if image_tag and "content" in image_tag.attrs else None
+                                if not image_url:
+                                    author_img = post_soup.find("img", {"class": "avatar"})
+                                    image_url = author_img["src"] if author_img and "src" in author_img.attrs else None
+
+                                # فیلتر کردن هشتگ‌ها
+                                content_lower = content.lower()
+                                relevant_hashtags = [f"#{htag}" for htag in hashtags if htag.lower() in content_lower]
+                                tags = " ".join(relevant_hashtags) if relevant_hashtags else "#Cybersecurity #BugBounty #EthicalHacking"
+
+                                # بررسی کلمات کلیدی اولویت‌دار
+                                is_priority = any(keyword.lower() in content_lower for keyword in PRIORITY_KEYWORDS)
+
+                                # ساخت پیام
+                                message = (
+                                    f"New Medium Post!\n"
+                                    f"{title}\n"
+                                    f"{description}\n"
+                                    f"{post_url}\n"
+                                    f"✍️ {author}"
+                                )
+
+                                post = {
+                                    "title": title,
+                                    "link": post_url,
+                                    "content": content,
+                                    "image_url": image_url,
+                                    "author": author,
+                                    "tags": tags,
+                                    "is_priority": is_priority,
+                                    "message": message
+                                }
+                                medium_posts.append(post)
+                                yield {"type": "post", "data": post}  # Yield post immediately
+                                logger.debug(f"Found Medium post: {title} ({post_url})")
+
+                        except Exception as e:
+                            logger.error(f"Error parsing article: {e}")
+                            continue
+
+                    logger.info(f"Fetched {len(urls)} Medium URLs for tag {tag}")
+                except Exception as e:
+                    logger.error(f"Error fetching Medium data from {url}: {e}\n{traceback.format_exc()}")
+                    continue
+# Async generator for Medium URLs and posts
+
+#async def get_medium_urls_and_posts_async(url="https://medium.com/tag/owasp/latest"):
+#    global medium_urls, medium_posts
+ #   logger.info(f"Fetching Medium data from {url}")
+  #  try:
+   #     async with aiohttp.ClientSession() as session:
+    #        res = await fetch_url_async(url, session)
+     #       if not res:
+      #          logger.warning(f"No response received from {url}")
+       #         return
+        #    
+         #   soup = BeautifulSoup(res.content, "html.parser")
+          #  links = soup.find_all("a", href=True)
+           # urls = set()
 
             # Collect URLs
-            for link in links:
-                href = link["href"]
-                if href.startswith("https://medium.com/") and "/@medium/" not in href:
-                    urls.add(href)
-                    yield {"type": "url", "data": href}  # Yield URL immediately
-                    logger.debug(f"Found Medium URL: {href}")
-
-            # Collect posts
-            for article in soup.find_all("article"):
-                try:
-                    title = article.find("h2")
-                    title_text = title.text.strip() if title else "No title"
-                    link_tag = article.find("a", href=True)
-                    link = "https://medium.com" + link_tag["href"] if link_tag else None
-                    
-                    if link:
-                        # Fetch post content
-                        post_res = await fetch_url_async(link, session)
-                        post_soup = BeautifulSoup(post_res.content, "html.parser")
-                        paragraphs = post_soup.find_all("p")
-                        content = "\n".join([para.get_text() for para in paragraphs[:3]])
-                        
-                        # Extract image (post or author profile)
-                        image_tag = post_soup.find("meta", property="og:image")
-                        image_url = image_tag["content"] if image_tag and "content" in image_tag.attrs else None
-                        if not image_url:
-                            author_img = post_soup.find("img", {"class": "avatar"})
-                            image_url = author_img["src"] if author_img and "src" in author_img.attrs else None
-                        
-                        # Extract author
-                        author = post_soup.find("a", {"class": "author"})
-                        author_name = author.text.strip() if author else "Unknown Author"
-                        
+            #for link in links:
+             #   href = link["href"]
+              #  if href.startswith("https://medium.com/") and "/@medium/" not in href:
+               #     urls.add(href)
+                #    yield {"type": "url", "data": href}  # Yield URL immediately
+                 #   logger.debug(f"Found Medium URL: {href}")
+#
+ #           # Collect posts
+  #          for article in soup.find_all("article"):
+   #             try:
+    #                title = article.find("h2")
+     #               title_text = title.text.strip() if title else "No title"
+      #              link_tag = article.find("a", href=True)
+       #             link = "https://medium.com" + link_tag["href"] if link_tag else None
+        #            
+         #           if link:
+          #              # Fetch post content
+           #             post_res = await fetch_url_async(link, session)
+            #            post_soup = BeautifulSoup(post_res.content, "html.parser")
+            #            paragraphs = post_soup.find_all("p")
+             #           content = "\n".join([para.get_text() for para in paragraphs[:3]])
+              #          
+               #         # Extract image (post or author profile)
+                #        image_tag = post_soup.find("meta", property="og:image")
+                 #       image_url = image_tag["content"] if image_tag and "content" in image_tag.attrs else None
+                  #      if not image_url:
+                   #         author_img = post_soup.find("img", {"class": "avatar"})
+                    #        image_url = author_img["src"] if author_img and "src" in author_img.attrs else None
+                     #   
+                      #  # Extract author
+                       # author = post_soup.find("a", {"class": "author"})
+                        #author_name = author.text.strip() if author else "Unknown Author"
+                        #
                         # Dynamic hashtag filtering
-                        content_lower = content.lower()
-                        relevant_hashtags = [f"#{tag}" for tag in hashtags if tag.lower() in content_lower]
-                        tags = " ".join(relevant_hashtags) if relevant_hashtags else "#Cybersecurity #BugBounty #EthicalHacking"
+                       # content_lower = content.lower()
+                        #relevant_hashtags = [f"#{tag}" for tag in hashtags if tag.lower() in content_lower]
+                       # tags = " ".join(relevant_hashtags) if relevant_hashtags else "#Cybersecurity #BugBounty #EthicalHacking"
                         
                         # Check for priority keywords
-                        is_priority = any(keyword.lower() in content_lower for keyword in PRIORITY_KEYWORDS)
-                        
-                        post = {
-                            "title": title_text,
-                            "link": link,
-                            "content": content,
-                            "image_url": image_url,
-                            "author": author_name,
-                            "tags": tags,
-                            "is_priority": is_priority
-                        }
-                        yield {"type": "post", "data": post}  # Yield post immediately
-                        logger.debug(f"Found Medium post: {title_text} ({link})")
-                except Exception as e:
-                    logger.error(f"Error parsing article: {e}")
-                    continue
-
-            medium_urls.update(urls)
-            logger.info(f"Fetched {len(urls)} Medium URLs")
-    except Exception as e:
-        logger.error(f"Error fetching Medium data: {e}\n{traceback.format_exc()}")
+                #        is_priority = any(keyword.lower() in content_lower for keyword in PRIORITY_KEYWORDS)
+               #         
+              #          post = {
+             #               "title": title_text,
+            #                "link": link,
+           #                 "content": content,
+          #                  "image_url": image_url,
+         #                   "author": author_name,
+        #                    "tags": tags,
+       #                     "is_priority": is_priority
+      #                  }
+     #                   yield {"type": "post", "data": post}  # Yield post immediately
+    #                    logger.debug(f"Found Medium post: {title_text} ({link})")
+  #              except Exception as e:
+   #                 logger.error(f"Error parsing article: {e}")
+ #                   continue
+#
+      #      medium_urls.update(urls)
+     #       logger.info(f"Fetched {len(urls)} Medium URLs")
+    #except Exception as e:
+      #  logger.error(f"Error fetching Medium data: {e}\n{traceback.format_exc()}")
 
 # Function to get URLs from X (Twitter)
 async def get_twitter_urls_async(max_concurrent=3):  # Reduced max_concurrent to 3
