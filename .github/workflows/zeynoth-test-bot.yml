@@ -1,4 +1,4 @@
-```yaml
+
 name: CyberSentry Bot
 
 on:
@@ -153,4 +153,4 @@ jobs:
             await bot.send_message(chat_id='$TELEGRAM_CHAT_ID', text=message, parse_mode='Markdown')
         asyncio.run(send_notification())
         "
-```
+
