@@ -6,7 +6,7 @@ on:
     - cron: '0 */3 * * *'  # Run every 3 hours to keep the digital underworld in check
   push:
     paths:
-      - 'writeup-watcher-v2.py'  # Run only if bot script changes
+      - 'writeup-watcher-v3.py'  # Run only if bot script changes
       - 'requirements.txt'     # Run if dependencies change
 
 jobs:
@@ -44,7 +44,7 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
       run: |
-        python3 -u writeup-watcher-v2.py > bot_logs.txt || true  # Save logs and keep going if bot crashes
+        python3 -u writeup-watcher-v3.py > bot_logs.txt || true  # Save logs and keep going if bot crashes
 
     - name: Clean old cache entries
       run: |
