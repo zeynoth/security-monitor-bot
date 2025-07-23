@@ -1,4 +1,4 @@
-# HTTP requests for fetching web pages
+# HTTP requests for synchronous fetching (used in Discord notifications)
 requests==2.32.3
 
 # HTML parsing for Medium scraping
@@ -22,5 +22,5 @@ pytz==2024.2
 # Twitter scraping using Nitter
 ntscraper==0.3.13
 
-# Async HTTP requests for ntscraper
+# Async HTTP requests for Medium and Twitter scraping
 aiohttp==3.10.10
