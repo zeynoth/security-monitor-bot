@@ -327,10 +327,8 @@ async def get_twitter_urls_async(max_concurrent=5):
                 urls.add(tweet['link'])
                 yield {"type": "url", "data": tweet['link']}  # Yield URL immediately
                 logger.debug(f"🎯 Sniped tweet: {tweet['link']}")
-            return True
         except Exception as e:
-            logger.error(f"[🔥 ERROR] #{hashtag} took a hit: {e}\n{traceback.format_exc()}")
-            return False
+            logger.error(f"[🔥 ERROR] Failed to scrape #{hashtag}: {e}\n{traceback.format_exc()}")
 
     async def main_scrape():
         scraper = None
@@ -341,9 +339,8 @@ async def get_twitter_urls_async(max_concurrent=5):
             logger.info(f"⚡ Locked onto Nitter instance: {instance}")
             with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
                 tasks = [scrape_hashtag(scraper, hashtag) for hashtag in hashtags]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                success_count = sum(1 for r in results if r is True)
-                logger.info(f"🏆 Mission stats: {success_count}/{len(hashtags)} hashtags scraped successfully")
+                await asyncio.gather(*tasks, return_exceptions=True)
+                logger.info(f"🏆 Mission stats: Scraped {len(urls)} tweets from {len(hashtags)} hashtags")
         except Exception as e:
             logger.critical(f"[💥 FATAL] Nitter initialization obliterated: {e}\n{traceback.format_exc()}")
         finally:
