@@ -1,48 +1,95 @@
 name: Run Python Bot
 
 on:
-  workflow_dispatch:  # Allows you to trigger manually
+  workflow_dispatch:  # Trigger manually for instant hacking
   schedule:
-    - cron: '0 */6 * * *'  # Run every 6 hours for periodic execution
+    - cron: '0 */3 * * *'  # Run every 3 hours to keep the digital underworld in check
+  push:
+    paths:
+      - 'writeup-watcher-v2.py'  # Run only if bot script changes
+      - 'requirements.txt'     # Run if dependencies change
 
 jobs:
-  run-bot:
+  run-cyber-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6-hour timeout to prevent indefinite runs
+    timeout-minutes: 60  # 1-hour timeout to stay lean and mean
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+    - name: Checkout the arsenal
+      uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Fetch full history to allow commits
+        fetch-depth: 0  # Full history for stealth commits
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
       with:
         python-version: 3.11
 
-    - name: Install dependencies
+    - name: Cache pip dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install hacking tools
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run bot script
+    - name: Run the CyberSentry bot
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
       run: |
-        python3 -u writeup-watcher.py || true  # Continue even if bot crashes to save files
+        python3 -u writeup-watcher-v2.py > bot_logs.txt || true  # Save logs and keep going if bot crashes
 
-    - name: Commit and push JSON files
+    - name: Clean old cache entries
       run: |
-        git config --global user.name 'github-actions[bot]'
-        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-        git add twitter_urls.json medium_urls.json stored_urls.json
-        git commit -m "Update URL storage files [bot]" || echo "No changes to commit"
-        git push
+        python3 -c "
+        import json
+        import time
+        CACHE_FILE = 'medium_cache.json'
+        CACHE_EXPIRY = 86400  # 24 hours
+        try:
+            with open(CACHE_FILE, 'r') as f:
+                cache = json.load(f)
+            current_time = time.time()
+            cleaned_cache = {k: v for k, v in cache.items() if (current_time - v['timestamp']) < CACHE_EXPIRY}
+            with open(CACHE_FILE, 'w') as f:
+                json.dump(cleaned_cache, f)
+            print('Old cache entries cleaned.')
+        except FileNotFoundError:
+            print('No cache file found, skipping cleanup.')
+        "
+
+    - name: Commit and push intel
+      uses: stefanzweifel/git-auto-commit-action@v5
+      with:
+        commit_message: "CyberSentry: Updated URL, post, and cache files"
+        file_pattern: "twitter_urls.json medium_urls.json stored_urls.json medium_posts.json medium_cache.json bot_logs.txt"
+        commit_user_name: "CyberSentry[bot]"
+        commit_user_email: "cybersentry@users.noreply.github.com"
+        commit_author: "CyberSentry <cybersentry@users.noreply.github.com>"
+
+    - name: Notify mission status
+      if: always()  # Run even if previous steps fail
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        python3 -c "
+        import telegram
+        import asyncio
+        async def send_notification():
+            bot = telegram.Bot(token='$TELEGRAM_TOKEN')
+            status = 'Success' if '${{ job.status }}' == 'success' else 'Failed'
+            message = f'🎯 CyberSentry Mission Report 🎯\nStatus: {status}\nTime: ${{ github.event.schedule || 'Manual' }}\nNew intel committed to the vault.'
+            await bot.send_message(chat_id='$TELEGRAM_CHAT_ID', text=message, parse_mode='Markdown')
+        asyncio.run(send_notification())
+        "
 ```
 ### Changes Made
 1. **Scheduled Execution**: Added a `schedule` trigger to run the bot every 6 hours (`cron: '0 */6 * * *'`). This complements the `workflow_dispatch` for manual runs and ensures periodic execution without relying solely on manual triggers.
