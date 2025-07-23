@@ -1,1 +1,5 @@
-
+23-Jul-25 13:06:01 - Sending message to Discord...
+23-Jul-25 13:06:01 - Sending message to Telegram...
+23-Jul-25 13:06:02 - HTTP Request: POST https://api.telegram.org/bot7684807514:AAEcNTKeE0QYQ82ADSLzrkvCk1iSXJ2Cyxo/sendMessage "HTTP/1.1 200 OK"
+23-Jul-25 13:11:12 - Failed to acquire lock for medium_cache.json
+23-Jul-25 13:11:12 - Error fetching Medium data: The file lock 'medium_cache.json.lock' could not be acquired.
