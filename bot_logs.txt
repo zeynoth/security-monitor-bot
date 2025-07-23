@@ -1,4 +1,20 @@
-  File "/home/runner/work/security-monitor-bot/security-monitor-bot/writeup-watcher-v6.py", line 203
-    with open(CACHE_FILE, 'r') as fileavond
-                                           ^
-SyntaxError: expected ':'
+23-Jul-25 19:32:56 - Sending message to Discord...
+2025-07-23 19:32:56,591 - INFO - Sending message to Discord...[0m
+23-Jul-25 19:32:56 - Successfully sent message to Discord
+2025-07-23 19:32:56,857 - INFO - Successfully sent message to Discord[0m
+23-Jul-25 19:32:56 - Sending message to Telegram...
+2025-07-23 19:32:56,858 - INFO - Sending message to Telegram...[0m
+23-Jul-25 19:32:57 - HTTP Request: POST https://api.telegram.org/bot7684807514:AAEcNTKeE0QYQ82ADSLzrkvCk1iSXJ2Cyxo/sendMessage "HTTP/1.1 200 OK"
+2025-07-23 19:32:57,310 - INFO - HTTP Request: POST https://api.telegram.org/bot7684807514:AAEcNTKeE0QYQ82ADSLzrkvCk1iSXJ2Cyxo/sendMessage "HTTP/1.1 200 OK"[0m
+23-Jul-25 19:32:57 - Successfully sent message to Telegram
+2025-07-23 19:32:57,311 - INFO - Successfully sent message to Telegram[0m
+Traceback (most recent call last):
+  File "/home/runner/work/security-monitor-bot/security-monitor-bot/writeup-watcher-v6.py", line 642, in <module>
+    stored_urls = load_stored_urls_and_posts()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/security-monitor-bot/security-monitor-bot/writeup-watcher-v6.py", line 519, in load_stored_urls_and_posts
+    load_cache()
+  File "/home/runner/work/security-monitor-bot/security-monitor-bot/writeup-watcher-v6.py", line 204, in load_cache
+    medium_cache = json.load(file)
+                             ^^^^
+NameError: name 'file' is not defined. Did you mean: 'filter'?
