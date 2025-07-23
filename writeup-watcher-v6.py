@@ -19,6 +19,7 @@ from functools import partial
 import traceback
 import aiohttp
 import filelock
+from urllib.parse import urlparse, quote, urlencode
 
 # Configure logging with colorlog
 log_format = "%(asctime)s - %(levelname)s - %(message)s"
@@ -165,15 +166,29 @@ PRIORITY_HACKER_MESSAGE = (
     "✍️ {author}"
 )
 
-# Async HTTP fetch with caching
+# Async HTTP fetch with caching and URL validation
 async def fetch_url_async(url, session, max_retries=MAX_RETRIES, backoff_factor=BACKOFF_TIME):
     global medium_cache
     current_time = time.time()
     
+    # Validate and encode URL
+    try:
+        parsed_url = urlparse(url)
+        if not parsed_url.scheme or not parsed_url.netloc:
+            logger.error(f"Invalid URL format: {url}")
+            raise ValueError(f"Invalid URL: {url}")
+        safe_url = parsed_url.scheme + "://" + parsed_url.netloc + quote(parsed_url.path)
+        if parsed_url.query:
+            safe_url += "?" + urlencode(dict(parse_qs(parsed_url.query)))
+        logger.debug(f"Attempting to fetch URL: {safe_url}")
+    except Exception as e:
+        logger.error(f"Failed to parse URL {url}: {e}")
+        raise
+
     # Check cache
-    if url in medium_cache and (current_time - medium_cache[url]["timestamp"]) < CACHE_EXPIRY:
-        logger.info(f"Using cached response for {url}")
-        return type('Response', (), {'content': medium_cache[url]["content"].encode(), 'raise_for_status': lambda: None})()
+    if safe_url in medium_cache and (current_time - medium_cache[safe_url]["timestamp"]) < CACHE_EXPIRY:
+        logger.info(f"Using cached response for {safe_url}")
+        return type('Response', (), {'content': medium_cache[safe_url]["content"].encode(), 'raise_for_status': lambda: None})()
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
@@ -182,12 +197,12 @@ async def fetch_url_async(url, session, max_retries=MAX_RETRIES, backoff_factor=
     
     while retries < max_retries:
         try:
-            async with session.get(url, headers=headers, timeout=30) as response:
+            async with session.get(safe_url, headers=headers, timeout=30) as response:
                 response.raise_for_status()
                 content = await response.text()
                 
                 # Store in memory cache
-                medium_cache[url] = {
+                medium_cache[safe_url] = {
                     "content": content,
                     "timestamp": current_time
                 }
@@ -204,8 +219,8 @@ async def fetch_url_async(url, session, max_retries=MAX_RETRIES, backoff_factor=
         except aiohttp.ClientError as e:
             logger.error(f"Request failed: {e}")
             raise
-    logger.error(f"Failed to fetch {url} after {max_retries} retries due to rate limiting.")
-    raise Exception(f"Failed to fetch {url} after {max_retries} retries due to rate limiting.")
+    logger.error(f"Failed to fetch {safe_url} after {max_retries} retries due to rate limiting.")
+    raise Exception(f"Failed to fetch {safe_url} after {max_retries} retries due to rate limiting.")
 
 # Function to initialize empty JSON file
 def initialize_json_file(file_path, is_cache=False):
@@ -282,53 +297,45 @@ async def get_medium_urls_and_posts_async():
     medium_urls = set()
     medium_posts = []
 
-    # برای هر تگ، سه نوع URL می‌سازیم: recommended، latest و archive
+    # Define base URLs for Medium scraping
     base_urls = [
-        "httpsْ://medium.com/tag/{tag}/recommended",
+        "https://medium.com/tag/{tag}/recommended",
         "https://medium.com/tag/{tag}/latest",
         "https://medium.com/tag/{tag}/archive"
     ]
 
     async with aiohttp.ClientSession() as session:
         for tag in hashtags:
-            urls = set()  # تعریف urls برای هر تگ
+            urls = set()
             for base_url in base_urls:
-                url = base_url.format(tag=tag)
-                logger.info(f"Fetching Medium data from {url}")
                 try:
+                    url = base_url.format(tag=quote(tag))  # Encode tag to handle special characters
+                    logger.info(f"Fetching Medium data from {url}")
                     res = await fetch_url_async(url, session)
                     if not res:
                         logger.warning(f"No response received from {url}")
                         continue
 
                     soup = BeautifulSoup(res.content, "html.parser")
-                    # پیدا کردن تگ‌های <a> مربوط به پست‌ها با کلاس خاص
                     post_links = soup.find_all("a", class_="ag ah ai hl ak al am an ao ap aq ar as at au")
 
                     for link in post_links:
                         try:
-                            # استخراج عنوان از <h2>
                             title_tag = link.find("h2")
                             title = title_tag.text.strip() if title_tag else "No title"
-
-                            # استخراج توضیحات از <h3>
                             desc_tag = link.find("h3")
                             description = desc_tag.text.strip() if desc_tag else "No description"
-
-                            # استخراج لینک پست
                             href = link.get("href", "")
                             if href and href.startswith("/@"):
-                                post_url = f"https://medium.com{href.split('?')[0]}"  # حذف پارامترهای اضافی
+                                post_url = f"https://medium.com{href.split('?')[0]}"
                                 urls.add(post_url)
                                 medium_urls.add(post_url)
-                                yield {"type": "url", "data": post_url}  # Yield URL immediately
+                                yield {"type": "url", "data": post_url}
                                 logger.debug(f"Found Medium URL: {post_url}")
 
-                                # پیدا کردن نام نویسنده
                                 author_tag = link.find_previous("a", class_="ag ah ai hl ak al am an ao ap aq ar as ni ac r")
                                 author = author_tag.find("p").text.strip() if author_tag and author_tag.find("p") else "Unknown Author"
 
-                                # گرفتن محتوای پست (برای فیلتر کردن با کلمات کلیدی)
                                 post_res = await fetch_url_async(post_url, session)
                                 if not post_res:
                                     logger.warning(f"No response received for post {post_url}")
@@ -337,22 +344,18 @@ async def get_medium_urls_and_posts_async():
                                 paragraphs = post_soup.find_all("p")
                                 content = "\n".join([para.get_text() for para in paragraphs[:3]])
 
-                                # گرفتن تصویر (اولویت: تصویر پست، سپس تصویر نویسنده)
                                 image_tag = post_soup.find("meta", property="og:image")
                                 image_url = image_tag["content"] if image_tag and "content" in image_tag.attrs else None
                                 if not image_url:
                                     author_img = post_soup.find("img", {"class": "avatar"})
                                     image_url = author_img["src"] if author_img and "src" in author_img.attrs else None
 
-                                # فیلتر کردن هشتگ‌ها
                                 content_lower = content.lower()
                                 relevant_hashtags = [f"#{htag}" for htag in hashtags if htag.lower() in content_lower]
                                 tags = " ".join(relevant_hashtags) if relevant_hashtags else "#Cybersecurity #BugBounty #EthicalHacking"
 
-                                # بررسی کلمات کلیدی اولویت‌دار
                                 is_priority = any(keyword.lower() in content_lower for keyword in PRIORITY_KEYWORDS)
 
-                                # ساخت پیام
                                 message = (
                                     PRIORITY_HACKER_MESSAGE.format(
                                         title=title,
@@ -378,7 +381,7 @@ async def get_medium_urls_and_posts_async():
                                     "message": message
                                 }
                                 medium_posts.append(post)
-                                yield {"type": "post", "data": post}  # Yield post immediately
+                                yield {"type": "post", "data": post}
                                 logger.debug(f"Found Medium post: {title} ({post_url})")
 
                         except Exception as e:
@@ -407,7 +410,7 @@ async def get_twitter_urls_async(max_concurrent=3):
             )
             for tweet in tweets_data['tweets'][:5]:
                 urls.add(tweet['link'])
-                yield {"type": "url", "data": tweet['link']}  # Yield URL immediately
+                yield {"type": "url", "data": tweet['link']}
                 logger.debug(f"🎯 Sniped tweet: {tweet['link']}")
         except Exception as e:
             logger.error(f"[🔥 ERROR] Failed to scrape #{hashtag}: {e}\n{traceback.format_exc()}")
@@ -440,7 +443,7 @@ async def get_urls_from_all_sources_async():
     async for item in get_medium_urls_and_posts_async():
         yield item
     logger.info("Starting to fetch Twitter URLs")
-    async for item in get_twitter_urls_async():  # Properly await the async generator
+    async for item in get_twitter_urls_async():
         yield item
     logger.info("Finished fetching URLs from all sources")
 
@@ -621,7 +624,7 @@ async def check_for_updates_async():
                                 title="New Tweet",
                                 description=content,
                                 link=url,
-                                author="Unknown"  # Twitter posts may not have an author in this context
+                                author="Unknown"
                             ) if is_priority else HACKER_MESSAGE.format(
                                 title="New Tweet",
                                 description=content,
@@ -645,7 +648,7 @@ async def check_for_updates_async():
     
     logger.info(f"Fetched {len(new_urls)} total URLs and {len(medium_posts)} Medium posts")
     logger.info(f"New posts count: {len(new_urls - stored_urls)}")
-    save_stored_urls_and_posts()  # Save cache at the end of the cycle
+    save_stored_urls_and_posts()
 
 # Schedule updates
 def schedule_updates(interval_minutes=2):
