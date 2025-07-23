@@ -284,7 +284,7 @@ async def get_medium_urls_and_posts_async():
 
     # برای هر تگ، سه نوع URL می‌سازیم: recommended، latest و archive
     base_urls = [
-        "https://medium.com/tag/{tag}/recommended",
+        "httpsْ://medium.com/tag/{tag}/recommended",
         "https://medium.com/tag/{tag}/latest",
         "https://medium.com/tag/{tag}/archive"
     ]
@@ -420,7 +420,9 @@ async def get_twitter_urls_async(max_concurrent=3):
         logger.info(f"⚡ Locked onto Nitter instance: {instance}")
         with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
             tasks = [scrape_hashtag(scraper, hashtag) for hashtag in hashtags]
-            await asyncio.gather(*tasks, return_exceptions=True)
+            for future in await asyncio.gather(*tasks, return_exceptions=True):
+                if isinstance(future, Exception):
+                    logger.error(f"Error in scrape_hashtag: {future}")
             logger.info(f"🏆 Mission stats: Scraped {len(urls)} tweets from {len(hashtags)} hashtags")
     except Exception as e:
         logger.critical(f"[💥 FATAL] Nitter initialization obliterated: {e}\n{traceback.format_exc()}")
@@ -437,8 +439,8 @@ async def get_urls_from_all_sources_async():
     logger.info("Starting to fetch URLs from all sources")
     async for item in get_medium_urls_and_posts_async():
         yield item
-    twitter_generator = get_twitter_urls_async()
-    async for item in twitter_generator:
+    logger.info("Starting to fetch Twitter URLs")
+    async for item in get_twitter_urls_async():  # Properly await the async generator
         yield item
     logger.info("Finished fetching URLs from all sources")
 
@@ -646,7 +648,7 @@ async def check_for_updates_async():
     save_stored_urls_and_posts()  # Save cache at the end of the cycle
 
 # Schedule updates
-def schedule_updates(interval_minutes=5):
+def schedule_updates(interval_minutes=2):
     async def run_async():
         try:
             await check_for_updates_async()
@@ -665,7 +667,7 @@ if __name__ == '__main__':
     send_discord_message(WEBHOOK_URL, test_message, title="Test Message")
     asyncio.run(send_telegram_message(test_message))
     stored_urls = load_stored_urls_and_posts()
-    schedule_updates(interval_minutes=5)
+    schedule_updates(interval_minutes=2)
     cycles = 0
     
     try:
