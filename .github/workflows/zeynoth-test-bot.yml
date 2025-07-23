@@ -3,7 +3,7 @@ name: CyberSentry Bot
 on:
   workflow_dispatch:  # Trigger manually for instant hacking
   schedule:
-    - cron: '*/5 * * * *'  # Run every 5 minutes to stay on top of the digital underworld
+    - cron: '*/15 * * * *'  # Run every 15 minutes to reduce resource usage
   push:
     paths:
       - 'writeup-watcher-v6.py'  # Run only if bot script changes
@@ -45,6 +45,7 @@ jobs:
         import os
         import filelock
         import random
+        import shutil
         files = [
             ('twitter_urls.json', []),
             ('medium_urls.json', []),
@@ -53,9 +54,11 @@ jobs:
             ('medium_cache.json', {})
         ]
         for file_path, default_data in files:
-            for attempt in range(5):  # Retry 5 times
+            for attempt in range(10):  # Increased retries
                 try:
-                    with filelock.FileLock(f'{file_path}.lock', timeout=30):
+                    with filelock.FileLock(f'{file_path}.lock', timeout=60):
+                        if os.path.exists(file_path):
+                            shutil.copy(file_path, f'{file_path}.bak')  # Backup before repair
                         if not os.path.exists(file_path):
                             with open(file_path, 'w') as f:
                                 json.dump(default_data, f)
@@ -65,18 +68,29 @@ jobs:
                                 with open(file_path, 'r') as f:
                                     json.load(f)
                             except json.JSONDecodeError:
+                                print(f'Repairing {file_path} due to invalid JSON')
                                 with open(file_path, 'w') as f:
                                     json.dump(default_data, f)
-                                print(f'Repaired {file_path}')
                         break
                 except filelock.Timeout:
                     jitter = random.uniform(0, 0.5)
-                    print(f'Failed to acquire lock for {file_path} (attempt {attempt + 1}/5)')
-                    if attempt == 4:
-                        print(f'Failed to acquire lock for {file_path} after 5 attempts')
+                    print(f'Failed to acquire lock for {file_path} (attempt {attempt + 1}/10)')
+                    if attempt == 9:
+                        print(f'Failed to acquire lock for {file_path} after 10 attempts')
                         raise
                     time.sleep(1 + jitter)
         "
+
+    - name: Debug JSON Content Before Run
+      run: |
+        echo "twitter_urls.json:"
+        cat twitter_urls.json || echo "File is empty or does not exist"
+        echo "medium_urls.json:"
+        cat medium_urls.json || echo "File is empty or does not exist"
+        echo "stored_urls.json:"
+        cat stored_urls.json || echo "File is empty or does not exist"
+        echo "medium_posts.json:"
+        cat medium_posts.json || echo "File is empty or does not exist"
 
     - name: Run the CyberSentry bot
       env:
@@ -84,7 +98,18 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
       run: |
-        python3 -u writeup-watcher-v6.py > bot_logs.txt || true  # Save logs and keep going if bot crashes
+        python3 -u writeup-watcher-v6.py > bot_logs.txt 2>&1 || echo "Bot execution failed, check bot_logs.txt"
+
+    - name: Debug JSON Content After Run
+      run: |
+        echo "twitter_urls.json:"
+        cat twitter_urls.json || echo "File is empty or does not exist"
+        echo "medium_urls.json:"
+        cat medium_urls.json || echo "File is empty or does not exist"
+        echo "stored_urls.json:"
+        cat stored_urls.json || echo "File is empty or does not exist"
+        echo "medium_posts.json:"
+        cat medium_posts.json || echo "File is empty or does not exist"
 
     - name: Clean old cache entries
       run: |
@@ -94,11 +119,14 @@ jobs:
         import filelock
         import os
         import random
+        import shutil
         CACHE_FILE = 'medium_cache.json'
         CACHE_EXPIRY = 86400  # 24 hours
-        for attempt in range(5):  # Retry 5 times
+        for attempt in range(10):  # Increased retries
             try:
-                with filelock.FileLock(f'{CACHE_FILE}.lock', timeout=30):
+                with filelock.FileLock(f'{CACHE_FILE}.lock', timeout=60):
+                    if os.path.exists(CACHE_FILE):
+                        shutil.copy(CACHE_FILE, f'{CACHE_FILE}.bak')  # Backup cache
                     if not os.path.exists(CACHE_FILE):
                         with open(CACHE_FILE, 'w') as f:
                             json.dump({}, f)
@@ -111,7 +139,7 @@ jobs:
                             cleaned_cache = {k: v for k, v in cache.items() if (current_time - v['timestamp']) < CACHE_EXPIRY}
                             with open(CACHE_FILE, 'w') as f:
                                 json.dump(cleaned_cache, f)
-                            print('Old cache entries cleaned.')
+                            print(f'Cleaned {len(cache) - len(cleaned_cache)} old cache entries.')
                         except json.JSONDecodeError:
                             print(f'Repairing {CACHE_FILE} due to invalid JSON.')
                             with open(CACHE_FILE, 'w') as f:
@@ -119,9 +147,9 @@ jobs:
                     break
             except filelock.Timeout:
                 jitter = random.uniform(0, 0.5)
-                print(f'Failed to acquire lock for {CACHE_FILE} (attempt {attempt + 1}/5)')
-                if attempt == 4:
-                    print(f'Failed to acquire lock for {CACHE_FILE} after 5 attempts')
+                print(f'Failed to acquire lock for {CACHE_FILE} (attempt {attempt + 1}/10)')
+                if attempt == 9:
+                    print(f'Failed to acquire lock for {CACHE_FILE} after 10 attempts')
                     raise
                 time.sleep(1 + jitter)
         "
@@ -134,6 +162,7 @@ jobs:
         commit_user_name: "CyberSentry[bot]"
         commit_user_email: "cybersentry@users.noreply.github.com"
         commit_author: "CyberSentry <cybersentry@users.noreply.github.com>"
+        skip_dirty_check: false
 
     - name: Notify mission status
       if: always()  # Run even if previous steps fail
@@ -145,9 +174,12 @@ jobs:
         import telegram
         import asyncio
         async def send_notification():
-            bot = telegram.Bot(token='$TELEGRAM_TOKEN')
-            status = 'Success' if '${{ job.status }}' == 'success' else 'Failed'
-            message = f'🎯 CyberSentry Mission Report 🎯\nStatus: {status}\nTime: ${{ github.event.schedule || 'Manual' }}\nNew intel committed to the vault.'
-            await bot.send_message(chat_id='$TELEGRAM_CHAT_ID', text=message, parse_mode='Markdown')
+            try:
+                bot = telegram.Bot(token='$TELEGRAM_TOKEN')
+                status = 'Success' if '${{ job.status }}' == 'success' else 'Failed'
+                message = f'🎯 CyberSentry Mission Report 🎯\nStatus: {status}\nTime: ${{ github.event.schedule || 'Manual' }}\nNew intel committed to the vault.'
+                await bot.send_message(chat_id='$TELEGRAM_CHAT_ID', text=message, parse_mode='Markdown')
+            except Exception as e:
+                print(f'Failed to send Telegram notification: {e}')
         asyncio.run(send_notification())
         "
