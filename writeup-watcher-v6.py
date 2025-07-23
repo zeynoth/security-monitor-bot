@@ -395,6 +395,21 @@ async def get_medium_urls_and_posts_async():
                     continue
 
 # Function to get URLs from X (Twitter)
+async def scrape_hashtag(scraper, hashtag):
+    urls = set()
+    try:
+        logger.info(f"🔫 Blasting #{hashtag} with Nitter firepower...")
+        tweets_data = await asyncio.get_event_loop().run_in_executor(
+            None, partial(scraper.get_tweets, hashtag, mode='hashtag', number=5)
+        )
+        for tweet in tweets_data['tweets'][:5]:
+            urls.add(tweet['link'])
+            logger.debug(f"🎯 Sniped tweet: {tweet['link']}")
+    except Exception as e:
+        logger.error(f"[🔥 ERROR] Failed to scrape #{hashtag}: {e}\n{traceback.format_exc()}")
+    return urls
+
+
 async def get_twitter_urls_async(max_concurrent=3):
     urls = set()
     nitter_instances = [
@@ -402,19 +417,6 @@ async def get_twitter_urls_async(max_concurrent=3):
         "https://nitter.snopyta.org",
         "https://nitter.1d4.us",
     ]
-    
-    async def scrape_hashtag(scraper, hashtag):
-        try:
-            logger.info(f"🔫 Blasting #{hashtag} with Nitter firepower...")
-            tweets_data = await asyncio.get_event_loop().run_in_executor(
-                None, partial(scraper.get_tweets, hashtag, mode='hashtag', number=5)
-            )
-            for tweet in tweets_data['tweets'][:5]:
-                urls.add(tweet['link'])
-                yield {"type": "url", "data": tweet['link']}
-                logger.debug(f"🎯 Sniped tweet: {tweet['link']}")
-        except Exception as e:
-            logger.error(f"[🔥 ERROR] Failed to scrape #{hashtag}: {e}\n{traceback.format_exc()}")
 
     scraper = None
     instance = random.choice(nitter_instances)
@@ -423,10 +425,14 @@ async def get_twitter_urls_async(max_concurrent=3):
         scraper.set_instance(instance)
         logger.info(f"⚡ Locked onto Nitter instance: {instance}")
         with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+            # فرض می‌کنیم hashtags یک لیست در سطح بالاتر است
             tasks = [scrape_hashtag(scraper, hashtag) for hashtag in hashtags]
-            for future in await asyncio.gather(*tasks, return_exceptions=True):
-                if isinstance(future, Exception):
-                    logger.error(f"Error in scrape_hashtag: {future}")
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"Error in scrape_hashtag: {result}")
+                else:
+                    urls.update(result)
             logger.info(f"🏆 Mission stats: Scraped {len(urls)} tweets from {len(hashtags)} hashtags")
     except Exception as e:
         logger.critical(f"[💥 FATAL] Nitter initialization obliterated: {e}\n{traceback.format_exc()}")
