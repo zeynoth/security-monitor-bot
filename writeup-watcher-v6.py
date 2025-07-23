@@ -200,12 +200,20 @@ def load_cache():
         try:
             with filelock.FileLock(f"{CACHE_FILE}.lock", timeout=LOCK_TIMEOUT):
                 try:
-                    with open(CACHE_FILE, 'r') as fileavond:
-                        medium_cache = json.load(file)
-                    logger.info(f"Loaded {len(medium_cache)} cache entries from {CACHE_FILE}")
+                    if os.path.exists(CACHE_FILE):
+                        with open(CACHE_FILE, 'r') as file:  # Corrected variable name
+                            medium_cache = json.load(file)
+                        logger.info(f"Loaded {len(medium_cache)} cache entries from {CACHE_FILE}")
+                    else:
+                        logger.info(f"{CACHE_FILE} does not exist, initializing empty cache")
+                        medium_cache = {}
+                        with open(CACHE_FILE, 'w') as file:
+                            json.dump({}, file)
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to load {CACHE_FILE}: {e}. Initializing empty cache.")
                     medium_cache = {}
+                    with open(CACHE_FILE, 'w') as file:
+                        json.dump({}, file)
                 break
         except filelock.Timeout:
             jitter = random.uniform(0, 0.5)
@@ -222,7 +230,7 @@ def save_cache():
         try:
             with filelock.FileLock(f"{CACHE_FILE}.lock", timeout=LOCK_TIMEOUT):
                 with open(CACHE_FILE, 'w') as file:
-                    json.dump(medium_cache, file)
+                    json.dump(medium_cache, file, indent=2)
                 logger.info(f"Saved {len(medium_cache)} cache entries to {CACHE_FILE}")
                 break
         except filelock.Timeout:
@@ -489,16 +497,21 @@ def load_stored_urls_and_posts():
             try:
                 with filelock.FileLock(f"{file_path}.lock", timeout=LOCK_TIMEOUT):
                     try:
-                        with open(file_path, 'r') as file:
-                            data = json.load(file)
-                            if file_path == 'twitter_urls.json':
-                                twitter_urls = set(data)
-                            elif file_path == 'medium_urls.json':
-                                medium_urls = set(data)
-                            elif file_path == 'stored_urls.json':
-                                stored_urls = set(data)
-                            elif file_path == 'medium_posts.json':
-                                medium_posts = data
+                        if os.path.exists(file_path):
+                            with open(file_path, 'r') as file:
+                                data = json.load(file)
+                                if file_path == 'twitter_urls.json':
+                                    twitter_urls = set(data)
+                                elif file_path == 'medium_urls.json':
+                                    medium_urls = set(data)
+                                elif file_path == 'stored_urls.json':
+                                    stored_urls = set(data)
+                                elif file_path == 'medium_posts.json':
+                                    medium_posts = data
+                        else:
+                            logger.info(f"{file_path} does not exist, initializing empty file")
+                            with open(file_path, 'w') as file:
+                                json.dump([], file)
                     except json.JSONDecodeError as e:
                         logger.error(f"Failed to load {file_path}: {e}. Initializing empty data.")
                         if file_path == 'medium_posts.json':
@@ -535,7 +548,7 @@ def save_stored_urls_and_posts():
                     if os.path.exists(file_path):
                         shutil.copy(file_path, f"{file_path}.bak")  # Backup before saving
                     with open(file_path, 'w') as file:
-                        json.dump(data, file)
+                        json.dump(data, file, indent=2)  # Add indent for readability
                     logger.info(f"Saved {file_path} with {len(data)} entries")
                     break
             except filelock.Timeout:
@@ -607,10 +620,12 @@ def schedule_updates(interval_minutes=5):  # Increased to 5 minutes
             await check_for_updates_async()
         except Exception as e:
             logger.error(f"Error in check_for_updates_async: {e}\n{traceback.format_exc()}")
+            save_stored_urls_and_posts()  # Save on error
     schedule.every(interval_minutes).minutes.do(lambda: asyncio.run(run_async()))
 
 # Main bot loop with auto-restart
 def main():
+    global cycles
     try:
         while True:
             schedule.run_pending()
