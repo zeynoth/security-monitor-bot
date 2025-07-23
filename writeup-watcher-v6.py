@@ -37,7 +37,7 @@ TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')  # Your Telegram Chat ID
 
 # Hashtags for Medium, X (Twitter), and Reddit scraping
 hashtags = [
-    "owasp", "Cross Site Scripting", "penetration-testing", "bug-hunting", "web-vulnerabilities", "xss", "sql-injection",
+    "owasp", "Cross-Site-Scripting", "penetration-testing", "bug-hunting", "web-vulnerabilities", "xss", "sql-injection",
     "appsec", "bug-bounty", "hacking", "cybersecurity", "infosec", "ethicalhacking", "redteam",
     "blueTeam", "securityresearch", "vulnerability", "pentest", "hacker", "cyberattack",
     "securecoding", "threatintelligence", "osint", "darkweb", "malware", "securityawareness",
@@ -140,8 +140,8 @@ CACHE_FILE = 'medium_cache.json'
 CACHE_EXPIRY = 3600  # 1 hour in seconds
 
 # Retry settings for request
-MAX_RETRIES = 3
-BACKOFF_TIME = 2  # seconds
+MAX_RETRIES = 4
+BACKOFF_TIME = 10  # seconds
 LOCK_TIMEOUT = 30  # File lock timeout
 LOCK_RETRIES = 5  # Increased number of retries for file lock
 
