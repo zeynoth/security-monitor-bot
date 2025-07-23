@@ -114,7 +114,7 @@ jobs:
                             with open(CACHE_FILE, 'w') as f:
                                 json.dump({}, f)
                     break
-                except filelock.Timeout:
+            except filelock.Timeout:
                     print(f'Failed to acquire lock for {CACHE_FILE} (attempt {attempt + 1}/3)')
                     if attempt == 2:
                         print(f'Failed to acquire lock for {CACHE_FILE} after 3 attempts')
