@@ -79,6 +79,7 @@ jobs:
         import json
         import time
         import filelock
+        import os
         CACHE_FILE = 'medium_cache.json'
         CACHE_EXPIRY = 86400  # 24 hours
         try:
@@ -86,6 +87,7 @@ jobs:
                 if not os.path.exists(CACHE_FILE):
                     with open(CACHE_FILE, 'w') as f:
                         json.dump({}, f)
+                    print(f'Initialized {CACHE_FILE}')
                 else:
                     try:
                         with open(CACHE_FILE, 'r') as f:
