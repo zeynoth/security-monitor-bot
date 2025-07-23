@@ -1,6 +1,6 @@
 # HTTP requests for synchronous fetching (used in Discord notifications)
 requests==2.32.3
-os
+
 # HTML parsing for Medium scraping
 beautifulsoup4==4.12.3
 
