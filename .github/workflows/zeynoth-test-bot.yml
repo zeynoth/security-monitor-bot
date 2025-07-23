@@ -1,3 +1,4 @@
+```yaml
 name: CyberSentry Bot
 
 on:
@@ -43,7 +44,9 @@ jobs:
         python3 -c "
         import json
         import os
+        import time
         import filelock
+
         files = [
             ('twitter_urls.json', []),
             ('medium_urls.json', []),
@@ -51,6 +54,7 @@ jobs:
             ('medium_posts.json', []),
             ('medium_cache.json', {})
         ]
+
         for file_path, default_data in files:
             for attempt in range(3):  # Retry 3 times
                 try:
@@ -67,13 +71,13 @@ jobs:
                                 with open(file_path, 'w') as f:
                                     json.dump(default_data, f)
                                 print(f'Repaired {file_path}')
-                        break
-                    except filelock.Timeout:
-                        print(f'Failed to acquire lock for {file_path} (attempt {attempt + 1}/3)')
-                        if attempt == 2:
-                            print(f'Failed to acquire lock for {file_path} after 3 attempts')
-                            raise
-                        time.sleep(1)
+                        break  # success, break retry loop
+                except filelock.Timeout:
+                    print(f'Failed to acquire lock for {file_path} (attempt {attempt + 1}/3)')
+                    if attempt == 2:
+                        print(f'Failed to acquire lock for {file_path} after 3 attempts')
+                        raise
+                    time.sleep(1)
         "
 
     - name: Run the CyberSentry bot
@@ -91,9 +95,11 @@ jobs:
         import time
         import filelock
         import os
+
         CACHE_FILE = 'medium_cache.json'
         CACHE_EXPIRY = 86400  # 24 hours
-        for attempt in range(3):  # Retry 3 times
+
+        for attempt in range(3):
             try:
                 with filelock.FileLock(f'{CACHE_FILE}.lock', timeout=30):
                     if not os.path.exists(CACHE_FILE):
@@ -105,7 +111,7 @@ jobs:
                             with open(CACHE_FILE, 'r') as f:
                                 cache = json.load(f)
                             current_time = time.time()
-                            cleaned_cache = {k: v for k, v in cache.items() if (current_time - v['timestamp']) < CACHE_EXPIRY}
+                            cleaned_cache = {k: v for k, v in cache.items() if (current_time - v.get('timestamp', 0)) < CACHE_EXPIRY}
                             with open(CACHE_FILE, 'w') as f:
                                 json.dump(cleaned_cache, f)
                             print('Old cache entries cleaned.')
@@ -115,11 +121,11 @@ jobs:
                                 json.dump({}, f)
                     break
             except filelock.Timeout:
-                    print(f'Failed to acquire lock for {CACHE_FILE} (attempt {attempt + 1}/3)')
-                    if attempt == 2:
-                        print(f'Failed to acquire lock for {CACHE_FILE} after 3 attempts')
-                        raise
-                    time.sleep(1)
+                print(f'Failed to acquire lock for {CACHE_FILE} (attempt {attempt + 1}/3)')
+                if attempt == 2:
+                    print(f'Failed to acquire lock for {CACHE_FILE} after 3 attempts')
+                    raise
+                time.sleep(1)
         "
 
     - name: Commit and push intel
@@ -147,3 +153,4 @@ jobs:
             await bot.send_message(chat_id='$TELEGRAM_CHAT_ID', text=message, parse_mode='Markdown')
         asyncio.run(send_notification())
         "
+```
