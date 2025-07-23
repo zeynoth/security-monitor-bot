@@ -1,18 +1,18 @@
-name: Run Python Bot
+name: CyberSentry Bot
 
 on:
   workflow_dispatch:  # Trigger manually for instant hacking
   schedule:
-    - cron: '0 */3 * * *'  # Run every 3 hours to keep the digital underworld in check
+    - cron: '*/5 * * * *'  # Run every 5 minutes to stay on top of the digital underworld
   push:
     paths:
-      - 'writeup-watcher-v3.py'  # Run only if bot script changes
+      - 'writeup-watcher.py'  # Run only if bot script changes
       - 'requirements.txt'     # Run if dependencies change
 
 jobs:
   run-cyber-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 60  # 1-hour timeout to stay lean and mean
+    timeout-minutes: 30  # 30-minute timeout to stay lean and mean
 
     steps:
     - name: Checkout the arsenal
@@ -38,31 +38,69 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
+    - name: Repair JSON files
+      run: |
+        python3 -c "
+        import json
+        import os
+        files = [
+            ('twitter_urls.json', []),
+            ('medium_urls.json', []),
+            ('stored_urls.json', []),
+            ('medium_posts.json', []),
+            ('medium_cache.json', {})
+        ]
+        for file_path, default_data in files:
+            if not os.path.exists(file_path):
+                with open(file_path, 'w') as f:
+                    json.dump(default_data, f)
+                print(f'Initialized {file_path}')
+            else:
+                try:
+                    with open(file_path, 'r') as f:
+                        json.load(f)
+                except json.JSONDecodeError:
+                    with open(file_path, 'w') as f:
+                        json.dump(default_data, f)
+                    print(f'Repaired {file_path}')
+        "
+
     - name: Run the CyberSentry bot
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
       run: |
-        python3 -u writeup-watcher-v3.py > bot_logs.txt || true  # Save logs and keep going if bot crashes
+        python3 -u writeup-watcher.py > bot_logs.txt || true  # Save logs and keep going if bot crashes
 
     - name: Clean old cache entries
       run: |
         python3 -c "
         import json
         import time
+        import filelock
         CACHE_FILE = 'medium_cache.json'
         CACHE_EXPIRY = 86400  # 24 hours
         try:
-            with open(CACHE_FILE, 'r') as f:
-                cache = json.load(f)
-            current_time = time.time()
-            cleaned_cache = {k: v for k, v in cache.items() if (current_time - v['timestamp']) < CACHE_EXPIRY}
-            with open(CACHE_FILE, 'w') as f:
-                json.dump(cleaned_cache, f)
-            print('Old cache entries cleaned.')
-        except FileNotFoundError:
-            print('No cache file found, skipping cleanup.')
+            with filelock.FileLock(f'{CACHE_FILE}.lock', timeout=10):
+                if not os.path.exists(CACHE_FILE):
+                    with open(CACHE_FILE, 'w') as f:
+                        json.dump({}, f)
+                else:
+                    try:
+                        with open(CACHE_FILE, 'r') as f:
+                            cache = json.load(f)
+                        current_time = time.time()
+                        cleaned_cache = {k: v for k, v in cache.items() if (current_time - v['timestamp']) < CACHE_EXPIRY}
+                        with open(CACHE_FILE, 'w') as f:
+                            json.dump(cleaned_cache, f)
+                        print('Old cache entries cleaned.')
+                    except json.JSONDecodeError:
+                        print(f'Repairing {CACHE_FILE} due to invalid JSON.')
+                        with open(CACHE_FILE, 'w') as f:
+                            json.dump({}, f)
+        except filelock.Timeout:
+            print(f'Failed to acquire lock for {CACHE_FILE}')
         "
 
     - name: Commit and push intel
