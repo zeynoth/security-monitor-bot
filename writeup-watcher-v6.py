@@ -200,7 +200,7 @@ def load_cache():
         try:
             with filelock.FileLock(f"{CACHE_FILE}.lock", timeout=LOCK_TIMEOUT):
                 try:
-                    with open(CACHE_FILE, 'r') as fileavond
+                    with open(CACHE_FILE, 'r') as fileavond:
                         medium_cache = json.load(file)
                     logger.info(f"Loaded {len(medium_cache)} cache entries from {CACHE_FILE}")
                 except json.JSONDecodeError as e:
