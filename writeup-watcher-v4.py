@@ -8,7 +8,6 @@ from telegram import Bot
 import os
 import json
 from bs4 import BeautifulSoup
-from telegram import Bot, InputMediaPhoto
 from telegram.constants import ParseMode
 from datetime import datetime
 import pytz
@@ -122,6 +121,8 @@ CACHE_EXPIRY = 3600  # 1 hour in seconds
 # Retry settings for request
 MAX_RETRIES = 3
 BACKOFF_TIME = 2  # seconds
+LOCK_TIMEOUT = 30  # Increased file lock timeout to 30 seconds
+LOCK_RETRIES = 3  # Number of retries for file lock
 
 # Priority keywords for high-priority notifications
 PRIORITY_KEYWORDS = ["cve", "exploit", "vulnerability", "zero-day", "rce", "sqli", "xss", "lfi"]
@@ -167,13 +168,22 @@ async def fetch_url_async(url, session, max_retries=5, backoff_factor=1.5):
                 response.raise_for_status()
                 content = await response.text()
                 
-                # Cache the response
-                with filelock.FileLock(f"{CACHE_FILE}.lock", timeout=10):
-                    medium_cache[url] = {
-                        "content": content,
-                        "timestamp": current_time
-                    }
-                    save_cache()
+                # Cache the response with retry mechanism for file lock
+                for attempt in range(LOCK_RETRIES):
+                    try:
+                        with filelock.FileLock(f"{CACHE_FILE}.lock", timeout=LOCK_TIMEOUT):
+                            medium_cache[url] = {
+                                "content": content,
+                                "timestamp": current_time
+                            }
+                            save_cache()
+                        break
+                    except filelock.Timeout:
+                        logger.warning(f"Failed to acquire lock for {CACHE_FILE} (attempt {attempt + 1}/{LOCK_RETRIES})")
+                        if attempt == LOCK_RETRIES - 1:
+                            logger.error(f"Failed to acquire lock for {CACHE_FILE} after {LOCK_RETRIES} attempts")
+                            raise
+                        await asyncio.sleep(1)
                 return type('Response', (), {'content': content.encode(), 'raise_for_status': lambda: None})()
         except aiohttp.ClientResponseError as e:
             if e.status == 429:
@@ -187,62 +197,84 @@ async def fetch_url_async(url, session, max_retries=5, backoff_factor=1.5):
         except aiohttp.ClientError as e:
             logger.error(f"Request failed: {e}")
             raise
-        except filelock.Timeout:
-            logger.error(f"Failed to acquire lock for {CACHE_FILE}")
-            raise
     logger.error(f"Failed to fetch {url} after {max_retries} retries due to rate limiting.")
     raise Exception(f"Failed to fetch {url} after {max_retries} retries due to rate limiting.")
 
 # Function to initialize empty JSON file
 def initialize_json_file(file_path, is_cache=False):
-    with filelock.FileLock(f"{file_path}.lock", timeout=10):
-        if not os.path.exists(file_path):
-            with open(file_path, 'w') as file:
-                json.dump({} if is_cache else [], file)
-            logger.info(f"Initialized empty JSON file: {file_path}")
-        else:
-            try:
-                with open(file_path, 'r') as file:
-                    json.load(file)
-            except json.JSONDecodeError:
-                logger.warning(f"Repairing corrupted JSON file: {file_path}")
-                with open(file_path, 'w') as file:
-                    json.dump({} if is_cache else [], file)
+    for attempt in range(LOCK_RETRIES):
+        try:
+            with filelock.FileLock(f"{file_path}.lock", timeout=LOCK_TIMEOUT):
+                if not os.path.exists(file_path):
+                    with open(file_path, 'w') as file:
+                        json.dump({} if is_cache else [], file)
+                    logger.info(f"Initialized empty JSON file: {file_path}")
+                else:
+                    try:
+                        with open(file_path, 'r') as file:
+                            json.load(file)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Repairing corrupted JSON file: {file_path}")
+                        with open(file_path, 'w') as file:
+                            json.dump({} if is_cache else [], file)
+                break
+        except filelock.Timeout:
+            logger.warning(f"Failed to acquire lock for {file_path} (attempt {attempt + 1}/{LOCK_RETRIES})")
+            if attempt == LOCK_RETRIES - 1:
+                logger.error(f"Failed to acquire lock for {file_path} after {LOCK_RETRIES} attempts")
+                raise
+            time.sleep(1)
 
 # Function to load cache from file
 def load_cache():
     global medium_cache
     initialize_json_file(CACHE_FILE, is_cache=True)
-    with filelock.FileLock(f"{CACHE_FILE}.lock", timeout=10):
+    for attempt in range(LOCK_RETRIES):
         try:
-            with open(CACHE_FILE, 'r') as file:
-                medium_cache = json.load(file)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to load {CACHE_FILE}: {e}. Initializing empty cache.")
-            medium_cache = {}
-            save_cache()
+            with filelock.FileLock(f"{CACHE_FILE}.lock", timeout=LOCK_TIMEOUT):
+                try:
+                    with open(CACHE_FILE, 'r') as file:
+                        medium_cache = json.load(file)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to load {CACHE_FILE}: {e}. Initializing empty cache.")
+                    medium_cache = {}
+                    save_cache()
+                break
         except filelock.Timeout:
-            logger.error(f"Failed to acquire lock for {CACHE_FILE}")
+            logger.warning(f"Failed to acquire lock for {CACHE_FILE} (attempt {attempt + 1}/{LOCK_RETRIES})")
+            if attempt == LOCK_RETRIES - 1:
+                logger.error(f"Failed to acquire lock for {CACHE_FILE} after {LOCK_RETRIES} attempts")
+                raise
+            time.sleep(1)
     return medium_cache
 
 # Function to save cache to file
 def save_cache():
-    with filelock.FileLock(f"{CACHE_FILE}.lock", timeout=10):
+    for attempt in range(LOCK_RETRIES):
         try:
-            with open(CACHE_FILE, 'w') as file:
-                json.dump(medium_cache, file)
+            with filelock.FileLock(f"{CACHE_FILE}.lock", timeout=LOCK_TIMEOUT):
+                with open(CACHE_FILE, 'w') as file:
+                    json.dump(medium_cache, file)
+                break
         except filelock.Timeout:
-            logger.error(f"Failed to acquire lock for {CACHE_FILE}")
+            logger.warning(f"Failed to acquire lock for {CACHE_FILE} (attempt {attempt + 1}/{LOCK_RETRIES})")
+            if attempt == LOCK_RETRIES - 1:
+                logger.error(f"Failed to save {CACHE_FILE}: Failed to acquire lock after {LOCK_RETRIES} attempts")
+                raise
+            time.sleep(1)
         except Exception as e:
             logger.error(f"Failed to save {CACHE_FILE}: {e}")
+            raise
 
 # Async generator for Medium URLs and posts
 async def get_medium_urls_and_posts_async(url="https://medium.com/tag/owasp/latest"):
     global medium_urls, medium_posts
+    logger.info(f"Fetching Medium data from {url}")
     try:
         async with aiohttp.ClientSession() as session:
             res = await fetch_url_async(url, session)
             if not res:
+                logger.warning(f"No response received from {url}")
                 return
             
             soup = BeautifulSoup(res.content, "html.parser")
@@ -305,8 +337,9 @@ async def get_medium_urls_and_posts_async(url="https://medium.com/tag/owasp/late
                     continue
 
             medium_urls.update(urls)
+            logger.info(f"Fetched {len(urls)} Medium URLs")
     except Exception as e:
-        logger.error(f"Error fetching Medium data: {e}")
+        logger.error(f"Error fetching Medium data: {e}\n{traceback.format_exc()}")
 
 # Function to get URLs from X (Twitter)
 async def get_twitter_urls_async(max_concurrent=5):
@@ -330,56 +363,70 @@ async def get_twitter_urls_async(max_concurrent=5):
         except Exception as e:
             logger.error(f"[🔥 ERROR] Failed to scrape #{hashtag}: {e}\n{traceback.format_exc()}")
 
-    async def main_scrape():
-        scraper = None
-        instance = random.choice(nitter_instances)
-        try:
-            scraper = Nitter(log_level=1, skip_instance_check=False)
-            scraper.set_instance(instance)
-            logger.info(f"⚡ Locked onto Nitter instance: {instance}")
-            with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
-                tasks = [scrape_hashtag(scraper, hashtag) for hashtag in hashtags]
-                await asyncio.gather(*tasks, return_exceptions=True)
-                logger.info(f"🏆 Mission stats: Scraped {len(urls)} tweets from {len(hashtags)} hashtags")
-        except Exception as e:
-            logger.critical(f"[💥 FATAL] Nitter initialization obliterated: {e}\n{traceback.format_exc()}")
-        finally:
-            if scraper:
-                scraper.close()
-                logger.info("🧹 Cleaned up Nitter resources like a pro.")
+    scraper = None
+    instance = random.choice(nitter_instances)
+    try:
+        scraper = Nitter(log_level=1, skip_instance_check=False)
+        scraper.set_instance(instance)
+        logger.info(f"⚡ Locked onto Nitter instance: {instance}")
+        with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+            tasks = [scrape_hashtag(scraper, hashtag) for hashtag in hashtags]
+            await asyncio.gather(*tasks, return_exceptions=True)
+            logger.info(f"🏆 Mission stats: Scraped {len(urls)} tweets from {len(hashtags)} hashtags")
+    except Exception as e:
+        logger.critical(f"[💥 FATAL] Nitter initialization obliterated: {e}\n{traceback.format_exc()}")
+    finally:
+        if scraper:
+            scraper.close()
+            logger.info("🧹 Cleaned up Nitter resources like a pro.")
 
-    await main_scrape()
     global twitter_urls
     twitter_urls.update(urls)
 
 # Async generator for all URLs and posts
 async def get_urls_from_all_sources_async():
+    logger.info("Starting to fetch URLs from all sources")
     async for item in get_medium_urls_and_posts_async():
         yield item
-    async for item in get_twitter_urls_async():
+    # Instead of async for, await the twitter URLs generator and yield its items
+    twitter_generator = get_twitter_urls_async()
+    async for item in twitter_generator:
         yield item
+    logger.info("Finished fetching URLs from all sources")
 
 # Function to extract content (first 3 lines) from a URL
 async def extract_content_from_url_async(url, session):
-    res = await fetch_url_async(url, session)
-    if not res:
+    logger.info(f"Extracting content from {url}")
+    try:
+        res = await fetch_url_async(url, session)
+        if not res:
+            logger.warning(f"No content available for {url}")
+            return "No content available."
+        soup = BeautifulSoup(res.content, "html.parser")
+        paragraphs = soup.find_all("p")
+        content = "\n".join([para.get_text() for para in paragraphs[:3]])
+        return content
+    except Exception as e:
+        logger.error(f"Failed to extract content from {url}: {e}")
         return "No content available."
-    soup = BeautifulSoup(res.content, "html.parser")
-    paragraphs = soup.find_all("p")
-    content = "\n".join([para.get_text() for para in paragraphs[:3]])
-    return content
 
 # Function to extract the image from a URL if available
 async def extract_image_from_url_async(url, session):
-    res = await fetch_url_async(url, session)
-    if not res:
+    logger.info(f"Extracting image from {url}")
+    try:
+        res = await fetch_url_async(url, session)
+        if not res:
+            logger.warning(f"No image available for {url}")
+            return None
+        soup = BeautifulSoup(res.content, "html.parser")
+        image_tag = soup.find("meta", property="og:image")
+        if image_tag and 'content' in image_tag.attrs:
+            return image_tag['content']
+        author_img = soup.find("img", {"class": "avatar"})
+        return author_img["src"] if author_img and "src" in author_img.attrs else None
+    except Exception as e:
+        logger.error(f"Failed to extract image from {url}: {e}")
         return None
-    soup = BeautifulSoup(res.content, "html.parser")
-    image_tag = soup.find("meta", property="og:image")
-    if image_tag and 'content' in image_tag.attrs:
-        return image_tag['content']
-    author_img = soup.find("img", {"class": "avatar"})
-    return author_img["src"] if author_img and "src" in author_img.attrs else None
 
 # Send message to Discord with hacker message and content
 def send_discord_message(webhook_url, message, title=None, image_url=None, is_priority=False):
@@ -401,6 +448,7 @@ def send_discord_message(webhook_url, message, title=None, image_url=None, is_pr
             data["embeds"][0]["image"] = {"url": image_url}
         res = requests.post(webhook_url, json=data)
         res.raise_for_status()
+        logger.info("Successfully sent message to Discord")
     except requests.RequestException as e:
         logger.error(f"Error sending message to Discord: {e}")
 
@@ -423,6 +471,7 @@ async def send_telegram_message(message, image_url=None, is_priority=False):
                 text=final_message,
                 parse_mode=ParseMode.MARKDOWN
             )
+        logger.info("Successfully sent message to Telegram")
     except Exception as e:
         logger.error(f"Error sending message to Telegram: {e}")
 
@@ -436,30 +485,38 @@ def load_stored_urls_and_posts():
     
     for file_path in ['twitter_urls.json', 'medium_urls.json', 'stored_urls.json', 'medium_posts.json']:
         initialize_json_file(file_path)
-        with filelock.FileLock(f"{file_path}.lock", timeout=10):
+        for attempt in range(LOCK_RETRIES):
             try:
-                with open(file_path, 'r') as file:
-                    data = json.load(file)
-                    if file_path == 'twitter_urls.json':
-                        twitter_urls = set(data)
-                    elif file_path == 'medium_urls.json':
-                        medium_urls = set(data)
-                    elif file_path == 'stored_urls.json':
-                        stored_urls = set(data)
-                    elif file_path == 'medium_posts.json':
-                        medium_posts = data
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to load {file_path}: {e}. Initializing empty data.")
-                if file_path == 'medium_posts.json':
-                    medium_posts = []
-                else:
-                    globals()[file_path.split('.')[0]] = set()
-                with open(file_path, 'w') as file:
-                    json.dump([], file)
+                with filelock.FileLock(f"{file_path}.lock", timeout=LOCK_TIMEOUT):
+                    try:
+                        with open(file_path, 'r') as file:
+                            data = json.load(file)
+                            if file_path == 'twitter_urls.json':
+                                twitter_urls = set(data)
+                            elif file_path == 'medium_urls.json':
+                                medium_urls = set(data)
+                            elif file_path == 'stored_urls.json':
+                                stored_urls = set(data)
+                            elif file_path == 'medium_posts.json':
+                                medium_posts = data
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to load {file_path}: {e}. Initializing empty data.")
+                        if file_path == 'medium_posts.json':
+                            medium_posts = []
+                        else:
+                            globals()[file_path.split('.')[0]] = set()
+                        with open(file_path, 'w') as file:
+                            json.dump([], file)
+                    break
             except filelock.Timeout:
-                logger.error(f"Failed to acquire lock for {file_path}")
+                logger.warning(f"Failed to acquire lock for {file_path} (attempt {attempt + 1}/{LOCK_RETRIES})")
+                if attempt == LOCK_RETRIES - 1:
+                    logger.error(f"Failed to acquire lock for {file_path} after {LOCK_RETRIES} attempts")
+                    raise
+                time.sleep(1)
     
     load_cache()
+    logger.info(f"Loaded {len(twitter_urls)} Twitter URLs, {len(medium_urls)} Medium URLs, {len(stored_urls)} stored URLs, {len(medium_posts)} Medium posts")
     return stored_urls
 
 # Save URLs, posts, and cache to files
@@ -470,14 +527,22 @@ def save_stored_urls_and_posts():
         ('stored_urls.json', list(stored_urls)),
         ('medium_posts.json', medium_posts)
     ]:
-        with filelock.FileLock(f"{file_path}.lock", timeout=10):
+        for attempt in range(LOCK_RETRIES):
             try:
-                with open(file_path, 'w') as file:
-                    json.dump(data, file)
+                with filelock.FileLock(f"{file_path}.lock", timeout=LOCK_TIMEOUT):
+                    with open(file_path, 'w') as file:
+                        json.dump(data, file)
+                    break
+                logger.info(f"Saved {file_path} successfully")
             except filelock.Timeout:
-                logger.error(f"Failed to acquire lock for {file_path}")
+                logger.warning(f"Failed to acquire lock for {file_path} (attempt {attempt + 1}/{LOCK_RETRIES})")
+                if attempt == LOCK_RETRIES - 1:
+                    logger.error(f"Failed to save {file_path}: Failed to acquire lock after {LOCK_RETRIES} attempts")
+                    raise
+                time.sleep(1)
             except Exception as e:
                 logger.error(f"Failed to save {file_path}: {e}")
+                raise
     save_cache()
 
 # Main bot loop with real-time notifications
@@ -485,50 +550,55 @@ async def check_for_updates_async():
     global twitter_urls, medium_urls, stored_urls, medium_posts
     new_urls = set()
     
+    logger.info("Starting update check")
     async with aiohttp.ClientSession() as session:
         async for item in get_urls_from_all_sources_async():
-            if item["type"] == "url":
-                url = item["data"]
-                new_urls.add(url)
-                if url not in stored_urls:
-                    stored_urls.add(url)
-                    if url in twitter_urls:
-                        content = await extract_content_from_url_async(url, session)
-                        content_lower = content.lower()
-                        relevant_hashtags = [f"#{tag}" for tag in hashtags if tag.lower() in content_lower]
-                        tags = " ".join(relevant_hashtags) if relevant_hashtags else "#Cybersecurity #BugBounty #EthicalHacking"
-                        is_priority = any(keyword.lower() in content_lower for keyword in PRIORITY_KEYWORDS)
+            try:
+                if item["type"] == "url":
+                    url = item["data"]
+                    new_urls.add(url)
+                    if url not in stored_urls:
+                        stored_urls.add(url)
+                        if url in twitter_urls:
+                            content = await extract_content_from_url_async(url, session)
+                            content_lower = content.lower()
+                            relevant_hashtags = [f"#{tag}" for tag in hashtags if tag.lower() in content_lower]
+                            tags = " ".join(relevant_hashtags) if relevant_hashtags else "#Cybersecurity #BugBounty #EthicalHacking"
+                            is_priority = any(keyword.lower() in content_lower for keyword in PRIORITY_KEYWORDS)
+                            message = PRIORITY_HACKER_MESSAGE.format(
+                                link=url,
+                                content=content,
+                                tags=tags
+                            ) if is_priority else HACKER_MESSAGE.format(
+                                link=url,
+                                content=content,
+                                tags=tags
+                            )
+                            title = "New Tweet"
+                            image_url = await extract_image_from_url_async(url, session)
+                            send_discord_message(WEBHOOK_URL, message, title, image_url, is_priority)
+                            await send_telegram_message(message, image_url, is_priority)
+                elif item["type"] == "post":
+                    post = item["data"]
+                    if post["link"] not in stored_urls:
+                        stored_urls.add(post["link"])
+                        medium_posts.append(post)
                         message = PRIORITY_HACKER_MESSAGE.format(
-                            link=url,
-                            content=content,
-                            tags=tags
-                        ) if is_priority else HACKER_MESSAGE.format(
-                            link=url,
-                            content=content,
-                            tags=tags
+                            link=post["link"],
+                            content=post["content"] or "No content available.",
+                            tags=post["tags"]
+                        ) if post["is_priority"] else HACKER_MESSAGE.format(
+                            link=post["link"],
+                            content=post["content"] or "No content available.",
+                            tags=post["tags"]
                         )
-                        title = "New Tweet"
-                        image_url = await extract_image_from_url_async(url, session)
-                        send_discord_message(WEBHOOK_URL, message, title, image_url, is_priority)
-                        await send_telegram_message(message, image_url, is_priority)
-            elif item["type"] == "post":
-                post = item["data"]
-                if post["link"] not in stored_urls:
-                    stored_urls.add(post["link"])
-                    medium_posts.append(post)
-                    message = PRIORITY_HACKER_MESSAGE.format(
-                        link=post["link"],
-                        content=post["content"] or "No content available.",
-                        tags=post["tags"]
-                    ) if post["is_priority"] else HACKER_MESSAGE.format(
-                        link=post["link"],
-                        content=post["content"] or "No content available.",
-                        tags=post["tags"]
-                    )
-                    title = post["title"]
-                    image_url = post["image_url"]
-                    send_discord_message(WEBHOOK_URL, message, title, image_url, post["is_priority"])
-                    await send_telegram_message(message, image_url, post["is_priority"])
+                        title = post["title"]
+                        image_url = post["image_url"]
+                        send_discord_message(WEBHOOK_URL, message, title, image_url, post["is_priority"])
+                        await send_telegram_message(message, image_url, post["is_priority"])
+            except Exception as e:
+                logger.error(f"Error processing item {item}: {e}")
+                continue
     
     logger.info(f"Fetched {len(new_urls)} total URLs and {len(medium_posts)} Medium posts")
     logger.info(f"New posts count: {len(new_urls - stored_urls)}")
