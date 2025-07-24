@@ -197,10 +197,10 @@ def initialize_json_file(file_path, is_cache=False):
         try:
             with filelock.FileLock(f"{file_path}.lock", timeout=LOCK_TIMEOUT):
                 if os.path.exists(file_path):
-                    shutil.copy(file_path, f"{f'{file_path}.bak.{datetime.now().strftime("%Y%m%d_%H%M%S")}'}")
+                    shutil.copy(file_path, f"{file_path}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
                 if not os.path.exists(file_path):
                     with open(file_path, 'wb') as f:
-                        orjson.dumps({} if is_cache else [], f)
+                        f.write(orjson.dumps({} if is_cache else []))
                     logger.info(f"Initialized empty JSON file: {file_path}")
                 else:
                     try:
@@ -209,7 +209,7 @@ def initialize_json_file(file_path, is_cache=False):
                     except orjson.JSONDecodeError:
                         logger.warning(f"Repairing corrupted JSON file: {file_path}")
                         with open(file_path, 'wb') as f:
-                            orjson.dumps({} if is_cache else [], f)
+                            f.write(orjson.dumps({} if is_cache else []))
                 break
         except filelock.Timeout:
             jitter = random.uniform(0, 0.5)
@@ -234,7 +234,7 @@ def load_cache():
                     logger.info(f"{CACHE_FILE} does not exist, initializing empty cache")
                     medium_cache = {}
                     with open(CACHE_FILE, 'wb') as f:
-                        orjson.dumps({}, f)
+                        f.write(orjson.dumps({}))
                 break
         except filelock.Timeout:
             jitter = random.uniform(0, 0.5)
@@ -247,7 +247,7 @@ def load_cache():
             logger.error(f"Failed to load {CACHE_FILE}: {e}. Initializing empty cache.")
             medium_cache = {}
             with open(CACHE_FILE, 'wb') as f:
-                orjson.dumps({}, f)
+                f.write(orjson.dumps({}))
     return medium_cache
 
 # Function to save cache to file
@@ -256,7 +256,7 @@ def save_cache():
         try:
             with filelock.FileLock(f"{CACHE_FILE}.lock", timeout=LOCK_TIMEOUT):
                 with open(CACHE_FILE, 'wb') as f:
-                    orjson.dumps(medium_cache, f)
+                    f.write(orjson.dumps(medium_cache))
                 logger.info(f"Saved {len(medium_cache)} cache entries to {CACHE_FILE}")
                 break
         except filelock.Timeout:
@@ -411,7 +411,7 @@ async def get_reddit_urls_and_posts_async():
                                 if not post_res:
                                     logger.warning(f"No response received for post {post_url}")
                                     continue
-                                post_soup = BeautifulSoup(res.content, "lxml")
+                                post_soup = BeautifulSoup(post_res.content, "lxml")
                                 paragraphs = post_soup.find_all("p")
                                 content = "\n".join([para.get_text() for para in paragraphs[:3]])
 
@@ -654,7 +654,7 @@ def load_stored_urls_and_posts():
                     else:
                         logger.info(f"{file_path} does not exist, initializing empty file")
                         with open(file_path, 'wb') as f:
-                            orjson.dumps([], f)
+                            f.write(orjson.dumps([]))
                     break
             except filelock.Timeout:
                 jitter = random.uniform(0, 0.5)
@@ -670,7 +670,7 @@ def load_stored_urls_and_posts():
                 else:
                     globals()[file_path.split('.')[0]] = set()
                 with open(file_path, 'wb') as f:
-                    orjson.dumps([], f)
+                    f.write(orjson.dumps([]))
     
     load_cache()
     logger.info(f"Loaded {len(twitter_urls)} Twitter URLs, {len(medium_urls)} Medium URLs, {len(reddit_urls)} Reddit URLs, {len(stored_urls)} stored URLs, {len(medium_posts)} Medium posts, {len(reddit_posts)} Reddit posts")
@@ -691,9 +691,9 @@ def save_stored_urls_and_posts():
             try:
                 with filelock.FileLock(f"{file_path}.lock", timeout=LOCK_TIMEOUT):
                     if os.path.exists(file_path):
-                        shutil.copy(file_path, f"{f'{file_path}.bak.{datetime.now().strftime(\"%Y%m%d_%H%M%S\")}'}")
+                        shutil.copy(file_path, f"{file_path}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
                     with open(file_path, 'wb') as f:
-                        orjson.dumps(data, f)
+                        f.write(orjson.dumps(data))
                     logger.info(f"Saved {file_path} with {len(data)} entries")
                     break
             except filelock.Timeout:
