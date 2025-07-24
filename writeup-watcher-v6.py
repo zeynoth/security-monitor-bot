@@ -24,7 +24,7 @@ import filelock
 from urllib.parse import urlparse, quote, urlencode, parse_qs
 import shutil
 import redis
-from googletrans import Translator, LANGUAGES
+from deep_translator import GoogleTranslator
 
 # Configure logging with colorlog
 log_format = "%(asctime)s - %(levelname)s - %(message)s"
