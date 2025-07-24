@@ -3,7 +3,7 @@ name: CyberSentry Bot - Super Ultra Edition
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/30 * * * *'  # Changed to every 30 minutes to reduce concurrency risks
   push:
     paths:
       - 'writeup-watcher-v9.py'
@@ -45,6 +45,12 @@ jobs:
         pip show python-telegram-bot || echo "python-telegram-bot not installed"
         pip list  # Debug: List installed packages
 
+    - name: Check File Permissions
+      run: |
+        ls -la
+        chmod -R 777 *.json *.lock 2>/dev/null || true
+        ls -la
+
     - name: Test Telegram Notification
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -65,7 +71,7 @@ jobs:
     - name: Initialize and Repair JSON Files
       run: |
         python3 -c "
-        import json, os, filelock, random, shutil, time
+        import json, os, random, shutil, time
         from datetime import datetime
         files = [
             ('medium_urls.json', []),
@@ -76,31 +82,30 @@ jobs:
         log_file = 'json_repair_log.json'
         logs = []
         for file_path, default_data in files:
-            for attempt in range(15):
+            for attempt in range(5):
                 try:
-                    with filelock.FileLock(f'{file_path}.lock', timeout=180):
-                        if os.path.exists(file_path):
-                            shutil.copy(file_path, f'{file_path}.bak.{datetime.now().strftime(\"%Y%m%d_%H%M%S\")}')
-                        if not os.path.exists(file_path):
+                    if os.path.exists(file_path):
+                        shutil.copy(file_path, f'{file_path}.bak.{datetime.now().strftime(\"%Y%m%d_%H%M%S\")}')
+                    if not os.path.exists(file_path):
+                        with open(file_path, 'w') as f:
+                            json.dump(default_data, f, indent=2)
+                        logs.append({'file': file_path, 'status': 'initialized', 'time': str(datetime.now())})
+                    else:
+                        try:
+                            with open(file_path, 'r') as f:
+                                json.load(f)
+                        except json.JSONDecodeError:
+                            logs.append({'file': file_path, 'status': 'repaired', 'time': str(datetime.now())})
                             with open(file_path, 'w') as f:
                                 json.dump(default_data, f, indent=2)
-                            logs.append({'file': file_path, 'status': 'initialized', 'time': str(datetime.now())})
-                        else:
-                            try:
-                                with open(file_path, 'r') as f:
-                                    json.load(f)
-                            except json.JSONDecodeError:
-                                logs.append({'file': file_path, 'status': 'repaired', 'time': str(datetime.now())})
-                                with open(file_path, 'w') as f:
-                                    json.dump(default_data, f, indent=2)
-                        break
-                except filelock.Timeout:
-                    jitter = random.uniform(0, 1.5)
-                    logs.append({'file': file_path, 'status': 'lock_failed', 'attempt': attempt + 1, 'time': str(datetime.now())})
-                    if attempt == 14:
-                        logs.append({'file': file_path, 'status': 'lock_failed_permanently', 'time': str(datetime.now())})
+                    break
+                except (IOError, PermissionError) as e:
+                    jitter = random.uniform(0, 0.5)
+                    logs.append({'file': file_path, 'status': 'access_failed', 'attempt': attempt + 1, 'time': str(datetime.now())})
+                    if attempt == 4:
+                        logs.append({'file': file_path, 'status': 'access_failed_permanently', 'time': str(datetime.now())})
                         raise
-                    time.sleep(2 + jitter)
+                    time.sleep(1 + jitter)
         with open(log_file, 'w') as f:
             json.dump(logs, f, indent=2)
         "
