@@ -1,39 +1,14 @@
-# HTTP requests for synchronous fetching (used in Discord notifications)
 requests==2.32.3
-
-# HTML parsing for Medium and Reddit scraping
 beautifulsoup4==4.12.3
-lxml==5.3.0  # Fast HTML/XML parser for BeautifulSoup
-
-# Scheduling periodic tasks
+lxml==5.3.0
 schedule==1.2.2
-
-# Telegram bot API
 python-telegram-bot==21.5
-
-# Colored logging for better debugging
 colorlog==6.8.2
-
-# Progress bar for processing posts
 tqdm==4.66.5
-
-# Timezone handling
 pytz==2024.2
-
-# Twitter scraping using Nitter
 ntscraper==0.3.13
-
-# Async HTTP requests for Medium, Reddit, and Twitter scraping
 aiohttp==3.10.10
-
-# File locking for concurrent JSON access
 filelock==3.16.1
-
-# Fast JSON serialization/deserialization
 orjson==3.10.7
-
-# Redis client for caching (optional)
 redis==5.0.8
-
-# Translation for multi-language notifications
 deep-translator==1.11.4
