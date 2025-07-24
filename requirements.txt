@@ -36,4 +36,4 @@ orjson==3.10.7
 redis==5.0.8
 
 # Translation for multi-language notifications
-googletrans==4.0.0-rc1
+deep-translator==1.11.4
