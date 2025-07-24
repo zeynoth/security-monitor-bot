@@ -6,7 +6,7 @@ on:
     - cron: '*/15 * * * *'
   push:
     paths:
-      - 'writeup-watcher-v8.py'
+      - 'writeup-watcher-v9.py'
       - 'requirements.txt'
 
 concurrency:
@@ -109,7 +109,7 @@ jobs:
         NOTIFICATION_LANGUAGE: "fa"
       run: |
         echo "🚀 Launching CyberSentry Bot..."
-        python3 -u writeup-watcher-v8.py 2>&1 | tee bot_logs.txt || { echo "Bot execution failed! Check logs:"; cat bot_logs.txt; exit 1; }
+        python3 -u writeup-watcher-v9.py 2>&1 | tee bot_logs.txt || { echo "Bot execution failed! Check logs:"; cat bot_logs.txt; exit 1; }
         echo "📜 Bot logs:"
         cat bot_logs.txt
         echo "📜 JSON logs:"
