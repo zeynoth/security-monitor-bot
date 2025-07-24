@@ -7,7 +7,6 @@ import random
 import asyncio
 from telegram import Bot
 import os
-import json
 import orjson
 from bs4 import BeautifulSoup
 from telegram.constants import ParseMode
@@ -64,7 +63,7 @@ except redis.RedisError:
     logger.warning("Redis not available, falling back to file-based cache")
 
 # Initialize Translator
-translator = Translator()
+translator = GoogleTranslator(source='auto', target=LANGUAGE)
 
 # Hashtags for Medium, X (Twitter), and Reddit scraping
 hashtags = [
@@ -117,9 +116,9 @@ def truncate_message(message, max_length=2000):
 
 # Translate message to target language
 def translate_message(message, target_lang='en'):
-    if target_lang != 'en' and target_lang in LANGUAGES:
+    if target_lang != 'en':
         try:
-            return translator.translate(message, dest=target_lang).text
+            return translator.translate(message)
         except Exception as e:
             logger.error(f"Translation failed: {e}")
             return message
