@@ -14,13 +14,9 @@ from datetime import datetime
 import pytz
 from tqdm import tqdm
 import colorlog
-from ntscraper import Nitter
-from concurrent.futures import ThreadPoolExecutor
-from functools import partial
-import traceback
 import aiohttp
 import filelock
-from urllib.parse import urlparse, quote, urlencode, parse_qs
+from urllib.parse import urlparse, quote
 import shutil
 import redis
 from deep_translator import GoogleTranslator
@@ -65,7 +61,7 @@ except redis.RedisError:
 # Initialize Translator
 translator = GoogleTranslator(source='auto', target=LANGUAGE)
 
-# Hashtags for Medium, X (Twitter), and Reddit scraping
+# Hashtags for Medium scraping
 hashtags = [
     "owasp", "bugbounty", "cybersecurity", "xss", "sql-injection",
     "pentest", "ethicalhacking", "vulnerability", "hackthebox", "ctf"
@@ -75,19 +71,16 @@ PRIORITY_KEYWORDS = [
 ]
 
 # Global variables to store URLs, posts, and cache
-twitter_urls = set()
 medium_urls = set()
-reddit_urls = set()
 stored_urls = set()
 medium_posts = []
-reddit_posts = []
-medium_cache = {}  # Cache for Medium/Reddit pages
+medium_cache = {}  # Cache for Medium pages
 
 # Cache settings
 CACHE_FILE = 'medium_cache.json'
 CACHE_EXPIRY = 3600  # 1 hour in seconds
 LOCK_TIMEOUT = 60  # File lock timeout
-LOCK_RETRIES = 15  # Increased number of retries for file lock
+LOCK_RETRIES = 15  # Number of retries for file lock
 
 # Set the timezone
 TIMEZONE = pytz.timezone('UTC')
@@ -136,8 +129,6 @@ async def fetch_url_async(url, session, max_retries=4, backoff_factor=10):
             logger.error(f"Invalid URL format: {url}")
             raise ValueError(f"Invalid URL: {url}")
         safe_url = parsed_url.scheme + "://" + parsed_url.netloc + quote(parsed_url.path)
-        if parsed_url.query:
-            safe_url += "?" + urlencode(dict(parse_qs(parsed_url.query)))
         logger.debug(f"Attempting to fetch URL: {safe_url}")
     except Exception as e:
         logger.error(f"Failed to parse URL {url}: {e}")
@@ -156,15 +147,11 @@ async def fetch_url_async(url, session, max_retries=4, backoff_factor=10):
         return type('Response', (), {'content': medium_cache[safe_url]["content"].encode(), 'raise_for_status': lambda: None})()
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Referer": "https://www.reddit.com/"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
     
     for attempt in range(max_retries):
         try:
-            await asyncio.sleep(random.uniform(1, 3))
             async with session.get(safe_url, headers=headers, timeout=30) as response:
                 response.raise_for_status()
                 content = await response.text()
@@ -182,7 +169,7 @@ async def fetch_url_async(url, session, max_retries=4, backoff_factor=10):
                 logger.info(f"Fetched {safe_url} successfully")
                 return type('Response', (), {'content': content.encode(), 'raise_for_status': lambda: None})()
         except aiohttp.ClientResponseError as e:
-            if e.status in [429, 403, 502, 503]:
+            if e.status in [429, 502, 503]:
                 wait_time = backoff_factor * (2 ** attempt) + random.uniform(0, 0.1)
                 logger.warning(f"Retry {attempt + 1}/{max_retries} for {safe_url} after {wait_time:.1f}s (status: {e.status})")
                 await asyncio.sleep(wait_time)
@@ -371,164 +358,15 @@ async def get_medium_urls_and_posts_async():
 
                     logger.info(f"Fetched {len(urls)} Medium URLs for tag {tag}")
                 except Exception as e:
-                    logger.error(f"Error fetching Medium data from {url}: {e}\n{traceback.format_exc()}")
+                    logger.error(f"Error fetching Medium data from {url}: {e}")
                     continue
 
-# Async generator for Reddit URLs and posts
-async def get_reddit_urls_and_posts_async():
-    global reddit_urls, reddit_posts
-    reddit_urls = set()
-    reddit_posts = []
-
-    base_urls = ["https://www.reddit.com/r/{subreddit}/new/"]
-    subreddits = ["cybersecurity", "netsec", "bugbounty", "hacking"]
-    
-    async with aiohttp.ClientSession() as session:
-        for subreddit in tqdm(subreddits, desc="Scraping Reddit subs", colour="red"):
-            urls = set()
-            for base_url in base_urls:
-                try:
-                    url = base_url.format(subreddit=quote(subreddit))
-                    logger.info(f"Fetching Reddit data from {url}")
-                    res = await fetch_url_async(url, session)
-                    if not res:
-                        logger.warning(f"No response received from {url}")
-                        continue
-
-                    soup = BeautifulSoup(res.content, "lxml")
-                    post_links = soup.find_all("a", {"data-click-id": "body"}) or \
-                                 soup.find_all("article")
-
-                    for link in post_links:
-                        try:
-                            title_tag = link.find("h3")
-                            title = title_tag.text.strip() if title_tag else "No title"
-                            href = link.get("href", "")
-                            if href and href.startswith("/r/"):
-                                post_url = f"https://www.reddit.com{href.split('?')[0]}"
-                                urls.add(post_url)
-                                reddit_urls.add(post_url)
-                                yield {"type": "url", "data": post_url}
-                                logger.debug(f"Found Reddit URL: {post_url}")
-
-                                post_res = await fetch_url_async(post_url, session)
-                                if not post_res:
-                                    logger.warning(f"No response received for post {post_url}")
-                                    continue
-                                post_soup = BeautifulSoup(post_res.content, "lxml")
-                                paragraphs = post_soup.find_all("p")
-                                content = "\n".join([para.get_text() for para in paragraphs[:3]])
-
-                                author_tag = post_soup.find("a", {"data-click-id": "user"})
-                                author = author_tag.text.strip() if author_tag else "Unknown Author"
-
-                                image_tag = post_soup.find("meta", property="og:image")
-                                image_url = image_tag["content"] if image_tag and "content" in image_tag.attrs else None
-
-                                content_lower = content.lower()
-                                relevant_hashtags = [f"#{htag}" for htag in hashtags if htag.lower() in content_lower]
-                                tags = " ".join(relevant_hashtags) if relevant_hashtags else "#Cybersecurity #Reddit"
-
-                                is_priority = any(keyword.lower() in content_lower for keyword in PRIORITY_KEYWORDS)
-
-                                message = (
-                                    PRIORITY_HACKER_MESSAGE.format(
-                                        title=title,
-                                        description=content,
-                                        link=post_url,
-                                        author=author,
-                                        tags=tags
-                                    ) if is_priority else HACKER_MESSAGE.format(
-                                        title=title,
-                                        description=content,
-                                        link=post_url,
-                                        author=author,
-                                        tags=tags
-                                    )
-                                )
-                                message = translate_message(message, LANGUAGE)
-
-                                post = {
-                                    "title": title,
-                                    "link": post_url,
-                                    "content": content,
-                                    "image_url": image_url,
-                                    "author": author,
-                                    "tags": tags,
-                                    "is_priority": is_priority,
-                                    "message": message
-                                }
-                                reddit_posts.append(post)
-                                yield {"type": "post", "data": post}
-                                logger.debug(f"Found Reddit post: {title} ({post_url})")
-
-                        except Exception as e:
-                            logger.error(f"Error parsing Reddit post: {e}")
-                            continue
-
-                    logger.info(f"Fetched {len(urls)} Reddit URLs for subreddit {subreddit}")
-                except Exception as e:
-                    logger.error(f"Error fetching Reddit data from {url}: {e}\n{traceback.format_exc()}")
-                    continue
-
-# Function to get URLs from X (Twitter)
-async def get_twitter_urls_async(max_concurrent=5):
-    global twitter_urls
-    twitter_urls = set()
-
-    try:
-        scraper = Nitter(log_level=1)
-        logger.info("⚡ Initialized Nitter scraper")
-        
-        async def scrape_hashtag(hashtag):
-            urls = set()
-            try:
-                logger.info(f"🔫 Blasting #{hashtag} with Nitter...")
-                tweets_data = await asyncio.get_event_loop().run_in_executor(
-                    None, partial(scraper.get_tweets, hashtag, mode='hashtag', number=5)
-                )
-                for tweet in tweets_data['tweets'][:5]:
-                    urls.add(tweet['link'])
-                    logger.debug(f"🎯 Sniped tweet: {tweet['link']}")
-            except Exception as e:
-                logger.error(f"[🔥 ERROR] Failed to scrape #{hashtag}: {e}\n{traceback.format_exc()}")
-            return urls
-
-        with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
-            tasks = [scrape_hashtag(hashtag) for hashtag in hashtags]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for result in results:
-                if isinstance(result, Exception):
-                    logger.error(f"Error in scrape_hashtag: {result}")
-                else:
-                    twitter_urls.update(result)
-            logger.info(f"🏆 Mission stats: Scraped {len(twitter_urls)} tweets from {len(hashtags)} hashtags")
-    except Exception as e:
-        logger.error(f"[💥 ERROR] Nitter scraping failed: {e}\n{traceback.format_exc()}")
-    finally:
-        logger.info("🧹 Cleaned up Nitter resources")
-
-# Async generator for all URLs and posts
+# Async generator for all URLs and posts (only Medium)
 async def get_urls_from_all_sources_async():
-    logger.info("Starting to fetch URLs from all sources")
-    try:
-        async for item in get_medium_urls_and_posts_async():
-            yield item
-    except Exception as e:
-        logger.error(f"Error in Medium scraping: {e}\n{traceback.format_exc()}")
-    
-    try:
-        async for item in get_reddit_urls_and_posts_async():
-            yield item
-    except Exception as e:
-        logger.error(f"Error in Reddit scraping: {e}\n{traceback.format_exc()}")
-    
-    try:
-        await get_twitter_urls_async()
-    except Exception as e:
-        logger.error(f"Error in Twitter scraping: {e}\n{traceback.format_exc()}")
-    
-    logger.info("Finished fetching URLs from all sources")
+    logger.info("Starting to fetch URLs from Medium")
+    async for item in get_medium_urls_and_posts_async():
+        yield item
+    logger.info("Finished fetching URLs from Medium")
 
 # Function to extract content from a URL
 async def extract_content_from_url_async(url, session):
@@ -627,15 +465,12 @@ async def send_error_report(error_message):
 
 # Load previously stored URLs, posts, and cache
 def load_stored_urls_and_posts():
-    global twitter_urls, medium_urls, reddit_urls, stored_urls, medium_posts, reddit_posts
-    twitter_urls = set()
+    global medium_urls, stored_urls, medium_posts
     medium_urls = set()
-    reddit_urls = set()
     stored_urls = set()
     medium_posts = []
-    reddit_posts = []
     
-    for file_path in ['twitter_urls.json', 'medium_urls.json', 'reddit_urls.json', 'stored_urls.json', 'medium_posts.json', 'reddit_posts.json']:
+    for file_path in ['medium_urls.json', 'stored_urls.json', 'medium_posts.json']:
         initialize_json_file(file_path)
         for attempt in range(LOCK_RETRIES):
             try:
@@ -643,18 +478,12 @@ def load_stored_urls_and_posts():
                     if os.path.exists(file_path):
                         with open(file_path, 'rb') as f:
                             data = orjson.loads(f.read())
-                            if file_path == 'twitter_urls.json':
-                                twitter_urls = set(data)
-                            elif file_path == 'medium_urls.json':
+                            if file_path == 'medium_urls.json':
                                 medium_urls = set(data)
-                            elif file_path == 'reddit_urls.json':
-                                reddit_urls = set(data)
                             elif file_path == 'stored_urls.json':
                                 stored_urls = set(data)
                             elif file_path == 'medium_posts.json':
                                 medium_posts = data
-                            elif file_path == 'reddit_posts.json':
-                                reddit_posts = data
                     else:
                         logger.info(f"{file_path} does not exist, initializing empty file")
                         with open(file_path, 'wb') as f:
@@ -669,27 +498,24 @@ def load_stored_urls_and_posts():
                 time.sleep(1 + jitter)
             except orjson.JSONDecodeError as e:
                 logger.error(f"Failed to load {file_path}: {e}. Initializing empty data.")
-                if file_path in ['medium_posts.json', 'reddit_posts.json']:
-                    globals()[file_path.split('.')[0]] = []
+                if file_path == 'medium_posts.json':
+                    medium_posts = []
                 else:
                     globals()[file_path.split('.')[0]] = set()
                 with open(file_path, 'wb') as f:
                     f.write(orjson.dumps([]))
     
     load_cache()
-    logger.info(f"Loaded {len(twitter_urls)} Twitter URLs, {len(medium_urls)} Medium URLs, {len(reddit_urls)} Reddit URLs, {len(stored_urls)} stored URLs, {len(medium_posts)} Medium posts, {len(reddit_posts)} Reddit posts")
+    logger.info(f"Loaded {len(medium_urls)} Medium URLs, {len(stored_urls)} stored URLs, {len(medium_posts)} Medium posts")
     return stored_urls
 
 # Save URLs, posts, and cache
 def save_stored_urls_and_posts():
-    logger.info(f"Before saving: twitter_urls={len(twitter_urls)}, medium_urls={len(medium_urls)}, reddit_urls={len(reddit_urls)}, stored_urls={len(stored_urls)}, medium_posts={len(medium_posts)}, reddit_posts={len(reddit_posts)}")
+    logger.info(f"Before saving: medium_urls={len(medium_urls)}, stored_urls={len(stored_urls)}, medium_posts={len(medium_posts)}")
     for file_path, data in [
-        ('twitter_urls.json', list(twitter_urls)),
         ('medium_urls.json', list(medium_urls)),
-        ('reddit_urls.json', list(reddit_urls)),
         ('stored_urls.json', list(stored_urls)),
-        ('medium_posts.json', medium_posts),
-        ('reddit_posts.json', reddit_posts)
+        ('medium_posts.json', medium_posts)
     ]:
         for attempt in range(LOCK_RETRIES):
             try:
@@ -714,7 +540,7 @@ def save_stored_urls_and_posts():
 
 # Main bot loop with real-time notifications
 async def check_for_updates_async():
-    global twitter_urls, medium_urls, reddit_urls, stored_urls, medium_posts, reddit_posts
+    global medium_urls, stored_urls, medium_posts
     new_urls = set()
     
     logger.info("Starting update check")
@@ -726,71 +552,20 @@ async def check_for_updates_async():
                     new_urls.add(url)
                     if url not in stored_urls:
                         stored_urls.add(url)
-                        if url in twitter_urls:
-                            content = await extract_content_from_url_async(url, session)
-                            content_lower = content.lower()
-                            relevant_hashtags = [f"#{tag}" for tag in hashtags if tag.lower() in content_lower]
-                            tags = " ".join(relevant_hashtags) if relevant_hashtags else "#Cybersecurity #Twitter"
-                            is_priority = any(keyword.lower() in content_lower for keyword in PRIORITY_KEYWORDS)
-                            message = PRIORITY_HACKER_MESSAGE.format(
-                                title="New Tweet",
-                                description=content,
-                                link=url,
-                                author="Unknown",
-                                tags=tags
-                            ) if is_priority else HACKER_MESSAGE.format(
-                                title="New Tweet",
-                                description=content,
-                                link=url,
-                                author="Unknown",
-                                tags=tags
-                            )
-                            message = translate_message(message, LANGUAGE)
-                            title = "New Tweet"
-                            image_url = await extract_image_from_url_async(url, session)
-                            send_discord_message(WEBHOOK_URL, message, title, image_url, is_priority)
-                            await send_telegram_message(message, image_url, is_priority)
-                        elif url in reddit_urls:
-                            content = await extract_content_from_url_async(url, session)
-                            content_lower = content.lower()
-                            relevant_hashtags = [f"#{tag}" for tag in hashtags if tag.lower() in content_lower]
-                            tags = " ".join(relevant_hashtags) if relevant_hashtags else "#Cybersecurity #Reddit"
-                            is_priority = any(keyword.lower() in content_lower for keyword in PRIORITY_KEYWORDS)
-                            message = PRIORITY_HACKER_MESSAGE.format(
-                                title="New Reddit Post",
-                                description=content,
-                                link=url,
-                                author="Unknown",
-                                tags=tags
-                            ) if is_priority else HACKER_MESSAGE.format(
-                                title="New Reddit Post",
-                                description=content,
-                                link=url,
-                                author="Unknown",
-                                tags=tags
-                            )
-                            message = translate_message(message, LANGUAGE)
-                            title = "New Reddit Post"
-                            image_url = await extract_image_from_url_async(url, session)
-                            send_discord_message(WEBHOOK_URL, message, title, image_url, is_priority)
-                            await send_telegram_message(message, image_url, is_priority)
                 elif item["type"] == "post":
                     post = item["data"]
                     if post["link"] not in stored_urls:
                         stored_urls.add(post["link"])
-                        if post["link"] in medium_urls:
-                            medium_posts.append(post)
-                        elif post["link"] in reddit_urls:
-                            reddit_posts.append(post)
+                        medium_posts.append(post)
                         send_discord_message(WEBHOOK_URL, post["message"], post["title"], post["image_url"], post["is_priority"])
                         await send_telegram_message(post["message"], post["image_url"], post["is_priority"])
             except Exception as e:
-                error_msg = f"Error processing item {item}: {e}\n{traceback.format_exc()}"
+                error_msg = f"Error processing item {item}: {e}"
                 logger.error(error_msg)
                 await send_error_report(error_msg)
                 continue
     
-    logger.info(f"Fetched {len(new_urls)} total URLs, {len(medium_posts)} Medium posts, {len(reddit_posts)} Reddit posts")
+    logger.info(f"Fetched {len(new_urls)} total URLs, {len(medium_posts)} Medium posts")
     logger.info(f"New posts count: {len(new_urls - stored_urls)}")
     save_stored_urls_and_posts()
 
@@ -800,7 +575,7 @@ def schedule_updates(interval_minutes=5):
         try:
             await check_for_updates_async()
         except Exception as e:
-            error_msg = f"Error in check_for_updates_async: {e}\n{traceback.format_exc()}"
+            error_msg = f"Error in check_for_updates_async: {e}"
             logger.error(error_msg)
             await send_error_report(error_msg)
             save_stored_urls_and_posts()
@@ -834,7 +609,7 @@ def main():
         logger.info("Bot interrupted, saving data.")
         save_stored_urls_and_posts()
     except Exception as e:
-        error_msg = f"Unexpected error: {e}\n{traceback.format_exc()}"
+        error_msg = f"Unexpected error: {e}"
         logger.error(error_msg)
         asyncio.run(send_error_report(error_msg))
         save_stored_urls_and_posts()
