@@ -1,8 +1,9 @@
 # HTTP requests for synchronous fetching (used in Discord notifications)
 requests==2.32.3
 
-# HTML parsing for Medium scraping
+# HTML parsing for Medium and Reddit scraping
 beautifulsoup4==4.12.3
+lxml==5.3.0  # Fast HTML/XML parser for BeautifulSoup
 
 # Scheduling periodic tasks
 schedule==1.2.2
@@ -22,8 +23,17 @@ pytz==2024.2
 # Twitter scraping using Nitter
 ntscraper==0.3.13
 
-# Async HTTP requests for Medium and Twitter scraping
+# Async HTTP requests for Medium, Reddit, and Twitter scraping
 aiohttp==3.10.10
 
 # File locking for concurrent JSON access
 filelock==3.16.1
+
+# Fast JSON serialization/deserialization
+orjson==3.10.7
+
+# Redis client for caching (optional)
+redis==5.0.8
+
+# Translation for multi-language notifications
+googletrans==4.0.0-rc1
