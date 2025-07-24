@@ -12,3 +12,4 @@ filelock==3.16.1
 orjson==3.10.7
 redis==5.0.8
 deep-translator==1.11.4
+cloudscraper==1.8.0  # برای bypass کردن Cloudflare (اختیاری)
