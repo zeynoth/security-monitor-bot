@@ -15,7 +15,6 @@ import pytz
 from tqdm import tqdm
 import colorlog
 import aiohttp
-import filelock
 from urllib.parse import urlparse, quote, urlencode, parse_qs
 import shutil
 import redis
@@ -63,95 +62,11 @@ translator = GoogleTranslator(source='auto', target=LANGUAGE)
 
 # Hashtags for Medium scraping
 hashtags = [
-    "owasp", "penetration-testing", "bug-hunting", "web-vulnerabilities", "xss", "sql-injection",
-    "appsec", "bug-bounty", "hacking", "cybersecurity", "infosec", "ethicalhacking", "redteam",
-    "blueTeam", "securityresearch", "vulnerability", "pentest", "hacker", "cyberattack",
-    "securecoding", "threatintelligence", "osint", "darkweb", "malware", "securityawareness",
-    "vuln", "exploit", "networksecurity", "privacy", "firewall", "encryption", "dataprotection",
-    "passwordsecurity", "zero-day", "ransomware", "phishing", "scada", "iotsecurity",
-    "cloudsecurity", "penetrationtesting", "cyberresilience", "ethicalhacker", "hackingtools",
-    "cyberdefense", "digitalforensics", "incidentresponse", "redteamers", "blueteamers",
-    "cve", "bugbountytips", "webappsecurity", "securitytesting", "malwareanalysis", "databreach",
-    "cryptography", "secops", "bughunter", "exploitdev", "exploitwriting", "payloads",
-    "networkpenetrationtesting", "applicationsecurity", "cyberwarfare", "informationsecurity",
-    "hackingnews", "securitybugs", "bountyhunter", "bugbountyprogram", "blackhat",
-    "defcon", "darknet", "socialengineering", "phishingattack", "cyberethics", "systemsecurity",
-    "dos", "ddos", "api-security", "secdevops", "webappvulns", "mobileappsecurity",
-    "cyberattackprevention", "penetrationtest", "firewallsecurity", "informationsharing",
-    "intrusiondetection", "networkdefense", "ciso", "infoseccommunity", "hackernews",
-    "ethicalhackers", "webpenetrationtesting", "securenetwork", "securityresearcher", "openbugbounty",
-    "exploitdevelopment", "websecurity", "bugbountytips", "datasecurity", "offensivecybersecurity",
-    "securitymonitoring", "cybersecurityawareness", "rce", "lfi", "sqli", "csrf", "xssattack",
-    "rcexploit", "path-traversal", "command-injection", "xssvulnerabilities", "csrfvulnerability",
-    "local-file-inclusion", "remote-code-execution", "sqliattack", "auth-bypass", "authz-bypass",
-    "insecure-deserialization", "xml-injection", "ddosvulnerability", "api-penetrationtesting",
-    "http-headers", "session-fixation", "subdomain-takeover", "buffer-overflow", "heap-spraying",
-    "smurf-attack", "bypass-csrf", "subdomain-enumeration", "reverse-shell", "webshell",
-    "hardening-web-apps", "insecure-http-methods", "dns-poisoning", "code-injection", "ntlm-relay",
-    "webshells", "os-command-injection", "access-control-issues", "ldap-injection", "api-vulnerabilities",
-    "input-validation", "broken-authentication", "broken-cryptography", "dns-spoofing", "iot-exploits",
-    "service-denial", "ssl-tls-vulnerabilities", "privilege-escalation", "race-condition",
-    "multi-factor-authentication", "security-headers", "remote-file-inclusion", "denial-of-service",
-    "brute-force-attack", "man-in-the-middle", "buffer-overflow-attack", "web-application-firewall",
-    "password-cracking", "keylogger", "insecure-encryption", "fuzz-testing", "sqlmap", "jwt-exploit",
-    "unauthorized-access", "debugging-flaws", "browser-hacking", "cookie-poisoning", "unauthenticated-access",
-    "information-leakage", "misconfigured-permissions", "command-injection-vulnerability", "clickjacking",
-    "cache-poisoning", "broken-links", "zombie-botnet", "trojan-horse", "ethical-hacker-tools",
-    "penetration-testing-tools", "file-upload-vulnerabilities", "timing-attack", "xsrf", "zip-slip",
-    "ajax-vulnerabilities", "unsafe-reflection", "session-fixation-attack", "server-side-request-forgery",
-    "csrf-attack", "spf-dkim-dmarc", "session-hijacking", "hmac", "sid-stealing", "spoofing-attack",
-    "cross-site-attack", "click-fraud", "client-side-injection", "cookie-hijacking", "mobile-vulnerabilities",
-    "mobile-phishing", "encrypted-traffic-hacking", "android-vulnerabilities", "ios-vulnerabilities",
-    "application-tampering", "web-app-attack", "mobile-app-attack", "web-app-bug-bounty",
-    "website-hacking", "browser-exploit", "xml-exploits", "dangerous-default-settings",
-    "botnet-attack", "sqli-payload", "unauthorized-privileges", "domain-spoofing", "script-injection",
-    "cross-origin-resource-sharing", "ssl-certificate-errors", "websocket-vulnerabilities",
-    "buffer-overflow-exploit", "toctou-attack", "time-based-sql-injection", "tcp-dump", "caching-vulnerabilities",
-    "app-vulnerability-scan", "security-lifecycle", "patch-management", "data-leakage", "poisoning-attack",
-    "phishing-scam", "ldap-attack", "protocol-vulnerabilities", "spoofing-defense", "stealth-hacking",
-    "internet-of-things-vulnerability", "iot-botnets", "smb-exploitation", "http-response-splitting",
-    "reverse-engineering-tools", "xss-exploit", "browser-exploits", "lfi-exploit", "api-fuzzing",
-    "automation-in-hacking", "elevation-of-privileges", "timing-analysis", "api-key-leakage",
-    "application-layer-attack", "buffer-exploit", "security-logging", "microservice-vulnerabilities",
-    "sensitive-data-exposure", "input-sanitization", "misconfigured-database", "persistent-xss",
-    "user-agent-manipulation", "dynamic-analysis", "python-exploit", "log-injection", "insecure-api",
-    "spike-detection", "active-directory-exploitation", "open-redirect", "json-injection", "excessive-logging",
-    "dns-rebinding", "caching-attack", "reverse-engineer", "clickjacking-protection", "parameter-pollution",
-    "api-bypass", "certificate-pinning", "java-deserialization", "whitelisting-bypass",
-    "cloud-misconfigurations", "external-service-interaction", "secret-management", "buffer-overflow-attack",
-    "restful-api-vulnerability", "cybersecurity-testing", "dns-dos", "over-the-air-exploits", "shellshock-exploit",
-    "bugbounty", "bugbountytips", "bughunter", "bugbountyhunter", "bugbountypost", "bugbountyhunting",
-    "bugbountytips", "bugbountylife", "bugbountyresearcher", "bugbountyprograms", "bugbountytutorial",
-    "bugbountyopportunity", "bugbountyreport", "bugbountysuccess", "bugbountyresources", "bugbountyexploit",
-    "bugbountyplatform", "bugbountykills", "bugbountytipsandtricks", "bugbountyninja", "bugbountyresearch",
-    "bugbountydiscovery", "bugbountytipsandtricks", "bugbountyhacker", "bugbountytools", "bugbountyscout",
-    "bugbountybug", "bugbountyvulnerability", "bugbountyhunter", "bugbountytutorial", "bugbountytips2025",
-    "bugbountyexploitdev", "bugbountysolutions", "bugbountystories", "bugbountytracking", "bugbountygrind",
-    "bugbountyplatforms", "bugbountysuccessstories", "bugbountylearning", "bugbountyhalloffame",
-    "bugbountysubmission", "bugbountyappsec", "bugbountytalk", "bugbountyresearcher", "bugbountymethods",
-    "bugbountyadvice", "bugbountyprogram", "bugbountystory", "bugbountyposts", "bugbountyeverywhere",
-    "bugbountytipsandtricks", "bugbountykills", "bugbountydiscovery", "bugbountyexploitdev", "bugbountyhacks"
+    "owasp", "bugbounty", "cybersecurity", "xss", "sql-injection",
+    "pentest", "ethicalhacking", "vulnerability", "hackthebox", "ctf"
 ]
 PRIORITY_KEYWORDS = [
-    "exploit", "vulnerability", "hack", "breach", "leak", "malware", "ransomware", "spyware",
-    "trojan", "rootkit", "phishing", "social engineering", "zero-day", "0day", "backdoor",
-    "ddos", "botnet", "payload", "obfuscation", "command and control", "c2", "keylogger",
-    "credential theft", "password dump", "privilege escalation", "lateral movement", "exfiltration",
-    "sql injection", "xss", "cross-site scripting", "csrf", "session hijacking", "clickjacking",
-    "buffer overflow", "heap spray", "format string", "directory traversal", "remote code execution",
-    "rce", "lpe", "arbitrary code", "shellcode", "dns tunneling", "ip spoofing", "mac spoofing",
-    "mitm", "man in the middle", "reconnaissance", "footprinting", "nmap", "metasploit",
-    "burp suite", "wireshark", "packet sniffing", "spoof", "inject", "injection", "compromise",
-    "breached data", "brute force", "dictionary attack", "rainbow table", "hash cracking",
-    "crack", "bypass", "evasion", "firewall bypass", "ids evasion", "port scan", "scanning",
-    "enumeration", "information disclosure", "threat", "attack vector", "exposure", "cve",
-    "cisa alert", "cirt", "ioc", "indicator of compromise", "tactics", "techniques", "procedures",
-    "ttp", "kill chain", "mitre", "att&ck", "threat actor", "apt", "state-sponsored", "cyberwar",
-    "cybercrime", "dark web", "underground", "black hat", "red team", "penetration testing",
-    "pentest", "vuln", "vulns", "cwe", "exploit-db", "exploit kit", "exploit pack", "weaponize",
-    "dropper", "stager", "loader", "malicious", "shell", "reverse shell", "bind shell",
-    "remote shell", "telnet", "ssh brute", "ftp attack", "x11 attack", "vnc intrusion",
-    "remote desktop exploit", "rdp", "admin access", "unauthorized access", "privilege abuse",
+    "exploit", "vulnerability", "hack", "breach", "leak", "rce", "xss", "sqli", "csrf"
 ]
 
 # Global variables to store URLs, posts, and cache
@@ -163,8 +78,8 @@ medium_cache = {}  # Cache for Medium pages
 # Cache settings
 CACHE_FILE = 'medium_cache.json'
 CACHE_EXPIRY = 3600  # 1 hour in seconds
-LOCK_TIMEOUT = 60  # File lock timeout
-LOCK_RETRIES = 15  # Number of retries for file lock
+RETRY_TIMEOUT = 60  # Timeout for file access retries
+RETRIES = 5  # Number of retries for file access
 
 # Set the timezone
 TIMEZONE = pytz.timezone('UTC')
@@ -274,29 +189,28 @@ async def fetch_url_async(url, session, max_retries=4, backoff_factor=10):
 
 # Function to initialize empty JSON file
 def initialize_json_file(file_path, is_cache=False):
-    for attempt in range(LOCK_RETRIES):
+    for attempt in range(RETRIES):
         try:
-            with filelock.FileLock(f"{file_path}.lock", timeout=LOCK_TIMEOUT):
-                if os.path.exists(file_path):
-                    shutil.copy(file_path, f"{file_path}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-                if not os.path.exists(file_path):
+            if os.path.exists(file_path):
+                shutil.copy(file_path, f"{file_path}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+            if not os.path.exists(file_path):
+                with open(file_path, 'wb') as f:
+                    f.write(orjson.dumps({} if is_cache else []))
+                logger.info(f"Initialized empty JSON file: {file_path}")
+            else:
+                try:
+                    with open(file_path, 'rb') as f:
+                        orjson.loads(f.read())
+                except orjson.JSONDecodeError:
+                    logger.warning(f"Repairing corrupted JSON file: {file_path}")
                     with open(file_path, 'wb') as f:
                         f.write(orjson.dumps({} if is_cache else []))
-                    logger.info(f"Initialized empty JSON file: {file_path}")
-                else:
-                    try:
-                        with open(file_path, 'rb') as f:
-                            orjson.loads(f.read())
-                    except orjson.JSONDecodeError:
-                        logger.warning(f"Repairing corrupted JSON file: {file_path}")
-                        with open(file_path, 'wb') as f:
-                            f.write(orjson.dumps({} if is_cache else []))
-                break
-        except filelock.Timeout:
+            return
+        except (IOError, PermissionError) as e:
             jitter = random.uniform(0, 0.5)
-            logger.warning(f"Failed to acquire lock for {file_path} (attempt {attempt + 1}/{LOCK_RETRIES})")
-            if attempt == LOCK_RETRIES - 1:
-                logger.error(f"Failed to acquire lock for {file_path} after {LOCK_RETRIES} attempts")
+            logger.warning(f"Failed to access {file_path} (attempt {attempt + 1}/{RETRIES}): {e}")
+            if attempt == RETRIES - 1:
+                logger.error(f"Failed to initialize {file_path} after {RETRIES} attempts")
                 raise
             time.sleep(1 + jitter)
 
@@ -304,52 +218,44 @@ def initialize_json_file(file_path, is_cache=False):
 def load_cache():
     global medium_cache
     initialize_json_file(CACHE_FILE, is_cache=True)
-    for attempt in range(LOCK_RETRIES):
+    for attempt in range(RETRIES):
         try:
-            with filelock.FileLock(f"{CACHE_FILE}.lock", timeout=LOCK_TIMEOUT):
-                if os.path.exists(CACHE_FILE):
-                    with open(CACHE_FILE, 'rb') as f:
-                        medium_cache = orjson.loads(f.read())
-                    logger.info(f"Loaded {len(medium_cache)} cache entries from {CACHE_FILE}")
-                else:
-                    logger.info(f"{CACHE_FILE} does not exist, initializing empty cache")
-                    medium_cache = {}
-                    with open(CACHE_FILE, 'wb') as f:
-                        f.write(orjson.dumps({}))
-                break
-        except filelock.Timeout:
+            if os.path.exists(CACHE_FILE):
+                with open(CACHE_FILE, 'rb') as f:
+                    medium_cache = orjson.loads(f.read())
+                logger.info(f"Loaded {len(medium_cache)} cache entries from {CACHE_FILE}")
+            else:
+                logger.info(f"{CACHE_FILE} does not exist, initializing empty cache")
+                medium_cache = {}
+                with open(CACHE_FILE, 'wb') as f:
+                    f.write(orjson.dumps({}))
+            return medium_cache
+        except (IOError, PermissionError, orjson.JSONDecodeError) as e:
             jitter = random.uniform(0, 0.5)
-            logger.warning(f"Failed to acquire lock for {CACHE_FILE} (attempt {attempt + 1}/{LOCK_RETRIES})")
-            if attempt == LOCK_RETRIES - 1:
-                logger.error(f"Failed to acquire lock for {CACHE_FILE} after {LOCK_RETRIES} attempts")
-                raise
+            logger.warning(f"Failed to load {CACHE_FILE} (attempt {attempt + 1}/{RETRIES}): {e}")
+            if attempt == RETRIES - 1:
+                logger.error(f"Failed to load {CACHE_FILE} after {RETRIES} attempts")
+                medium_cache = {}
+                with open(CACHE_FILE, 'wb') as f:
+                    f.write(orjson.dumps({}))
+                return medium_cache
             time.sleep(1 + jitter)
-        except orjson.JSONDecodeError as e:
-            logger.error(f"Failed to load {CACHE_FILE}: {e}. Initializing empty cache.")
-            medium_cache = {}
-            with open(CACHE_FILE, 'wb') as f:
-                f.write(orjson.dumps({}))
-    return medium_cache
 
 # Function to save cache to file
 def save_cache():
-    for attempt in range(LOCK_RETRIES):
+    for attempt in range(RETRIES):
         try:
-            with filelock.FileLock(f"{CACHE_FILE}.lock", timeout=LOCK_TIMEOUT):
-                with open(CACHE_FILE, 'wb') as f:
-                    f.write(orjson.dumps(medium_cache))
-                logger.info(f"Saved {len(medium_cache)} cache entries to {CACHE_FILE}")
-                break
-        except filelock.Timeout:
+            with open(CACHE_FILE, 'wb') as f:
+                f.write(orjson.dumps(medium_cache))
+            logger.info(f"Saved {len(medium_cache)} cache entries to {CACHE_FILE}")
+            return
+        except (IOError, PermissionError) as e:
             jitter = random.uniform(0, 0.5)
-            logger.warning(f"Failed to acquire lock for {CACHE_FILE} (attempt {attempt + 1}/{LOCK_RETRIES})")
-            if attempt == LOCK_RETRIES - 1:
-                logger.error(f"Failed to save {CACHE_FILE}: Failed to acquire lock after {LOCK_RETRIES} attempts")
+            logger.warning(f"Failed to save {CACHE_FILE} (attempt {attempt + 1}/{RETRIES}): {e}")
+            if attempt == RETRIES - 1:
+                logger.error(f"Failed to save {CACHE_FILE} after {RETRIES} attempts")
                 raise
             time.sleep(1 + jitter)
-        except Exception as e:
-            logger.error(f"Failed to save {CACHE_FILE}: {e}")
-            raise
 
 # Async generator for Medium URLs and posts
 async def get_medium_urls_and_posts_async():
@@ -567,38 +473,34 @@ def load_stored_urls_and_posts():
     
     for file_path in ['medium_urls.json', 'stored_urls.json', 'medium_posts.json']:
         initialize_json_file(file_path)
-        for attempt in range(LOCK_RETRIES):
+        for attempt in range(RETRIES):
             try:
-                with filelock.FileLock(f"{file_path}.lock", timeout=LOCK_TIMEOUT):
-                    if os.path.exists(file_path):
-                        with open(file_path, 'rb') as f:
-                            data = orjson.loads(f.read())
-                            if file_path == 'medium_urls.json':
-                                medium_urls = set(data)
-                            elif file_path == 'stored_urls.json':
-                                stored_urls = set(data)
-                            elif file_path == 'medium_posts.json':
-                                medium_posts = data
-                    else:
-                        logger.info(f"{file_path} does not exist, initializing empty file")
-                        with open(file_path, 'wb') as f:
-                            f.write(orjson.dumps([]))
-                    break
-            except filelock.Timeout:
-                jitter = random.uniform(0, 0.5)
-                logger.warning(f"Failed to acquire lock for {file_path} (attempt {attempt + 1}/{LOCK_RETRIES})")
-                if attempt == LOCK_RETRIES - 1:
-                    logger.error(f"Failed to acquire lock for {file_path} after {LOCK_RETRIES} attempts")
-                    raise
-                time.sleep(1 + jitter)
-            except orjson.JSONDecodeError as e:
-                logger.error(f"Failed to load {file_path}: {e}. Initializing empty data.")
-                if file_path == 'medium_posts.json':
-                    medium_posts = []
+                if os.path.exists(file_path):
+                    with open(file_path, 'rb') as f:
+                        data = orjson.loads(f.read())
+                        if file_path == 'medium_urls.json':
+                            medium_urls = set(data)
+                        elif file_path == 'stored_urls.json':
+                            stored_urls = set(data)
+                        elif file_path == 'medium_posts.json':
+                            medium_posts = data
                 else:
-                    globals()[file_path.split('.')[0]] = set()
-                with open(file_path, 'wb') as f:
-                    f.write(orjson.dumps([]))
+                    logger.info(f"{file_path} does not exist, initializing empty file")
+                    with open(file_path, 'wb') as f:
+                        f.write(orjson.dumps([]))
+                break
+            except (IOError, PermissionError, orjson.JSONDecodeError) as e:
+                jitter = random.uniform(0, 0.5)
+                logger.warning(f"Failed to load {file_path} (attempt {attempt + 1}/{RETRIES}): {e}")
+                if attempt == RETRIES - 1:
+                    logger.error(f"Failed to load {file_path} after {RETRIES} attempts")
+                    if file_path == 'medium_posts.json':
+                        medium_posts = []
+                    else:
+                        globals()[file_path.split('.')[0]] = set()
+                    with open(file_path, 'wb') as f:
+                        f.write(orjson.dumps([]))
+                time.sleep(1 + jitter)
     
     load_cache()
     logger.info(f"Loaded {len(medium_urls)} Medium URLs, {len(stored_urls)} stored URLs, {len(medium_posts)} Medium posts")
@@ -612,25 +514,21 @@ def save_stored_urls_and_posts():
         ('stored_urls.json', list(stored_urls)),
         ('medium_posts.json', medium_posts)
     ]:
-        for attempt in range(LOCK_RETRIES):
+        for attempt in range(RETRIES):
             try:
-                with filelock.FileLock(f"{file_path}.lock", timeout=LOCK_TIMEOUT):
-                    if os.path.exists(file_path):
-                        shutil.copy(file_path, f"{file_path}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-                    with open(file_path, 'wb') as f:
-                        f.write(orjson.dumps(data))
-                    logger.info(f"Saved {file_path} with {len(data)} entries")
-                    break
-            except filelock.Timeout:
+                if os.path.exists(file_path):
+                    shutil.copy(file_path, f"{file_path}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+                with open(file_path, 'wb') as f:
+                    f.write(orjson.dumps(data))
+                logger.info(f"Saved {file_path} with {len(data)} entries")
+                break
+            except (IOError, PermissionError) as e:
                 jitter = random.uniform(0, 0.5)
-                logger.warning(f"Failed to acquire lock for {file_path} (attempt {attempt + 1}/{LOCK_RETRIES})")
-                if attempt == LOCK_RETRIES - 1:
-                    logger.error(f"Failed to save {file_path}: Failed to acquire lock after {LOCK_RETRIES} attempts")
+                logger.warning(f"Failed to save {file_path} (attempt {attempt + 1}/{RETRIES}): {e}")
+                if attempt == RETRIES - 1:
+                    logger.error(f"Failed to save {file_path} after {RETRIES} attempts")
                     raise
                 time.sleep(1 + jitter)
-            except Exception as e:
-                logger.error(f"Failed to save {file_path}: {e}")
-                raise
     save_cache()
 
 # Main bot loop with real-time notifications
