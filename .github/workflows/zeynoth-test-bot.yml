@@ -1,28 +1,28 @@
-name: CyberSentry Bot - Ultra Edition
+name: CyberSentry Bot - Super Ultra Edition
 
 on:
-  workflow_dispatch:  # Trigger دستی برای عملیات فوری
+  workflow_dispatch:
   schedule:
-    - cron: '*/15 * * * *'  # هر 15 دقیقه برای ماموریت‌های خودکار
+    - cron: '*/15 * * * *'
   push:
     paths:
-      - 'writeup-watcher-v6.py'
+      - 'writeup-watcher-v7.py'
       - 'requirements.txt'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.run_id }}
-  cancel-in-progress: true  # جلوگیری از اجرای همزمان
+  cancel-in-progress: true
 
 jobs:
   run-cyber-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 45  # زمان کافی برای ماموریت‌های سنگین
+    timeout-minutes: 60  # افزایش timeout به 60 دقیقه
 
     steps:
     - name: Checkout the Cyber Vault
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # کل تاریخچه برای کامیت‌های حرفه‌ای
+        fetch-depth: 0
 
     - name: Set up Python 3.11
       uses: actions/setup-python@v5
@@ -40,7 +40,8 @@ jobs:
     - name: Install Cyber Arsenal
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt filelock orjson  # اضافه کردن orjson برای JSON سریع‌تر
+        pip install -r requirements.txt
+        pip list  # Debug: List installed packages
 
     - name: Initialize and Repair JSON Files
       run: |
@@ -50,14 +51,16 @@ jobs:
         files = [
             ('twitter_urls.json', []),
             ('medium_urls.json', []),
+            ('reddit_urls.json', []),
             ('stored_urls.json', []),
             ('medium_posts.json', []),
+            ('reddit_posts.json', []),
             ('medium_cache.json', {})
         ]
         log_file = 'json_repair_log.json'
         logs = []
         for file_path, default_data in files:
-            for attempt in range(15):  # افزایش تعداد تلاش‌ها
+            for attempt in range(15):
                 try:
                     with filelock.FileLock(f'{file_path}.lock', timeout=180):
                         if os.path.exists(file_path):
@@ -93,7 +96,7 @@ jobs:
         pwd
         ls -la
         echo "🔍 Checking JSON files:"
-        for file in twitter_urls.json medium_urls.json stored_urls.json medium_posts.json medium_cache.json; do
+        for file in twitter_urls.json medium_urls.json reddit_urls.json stored_urls.json medium_posts.json reddit_posts.json medium_cache.json; do
           echo "Content of $file:"
           cat $file || echo "File is empty or does not exist"
         done
@@ -103,62 +106,24 @@ jobs:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+        NOTIFICATION_LANGUAGE: "fa"
       run: |
         echo "🚀 Launching CyberSentry Bot..."
-        python3 -u writeup-watcher-v6.py > bot_logs.txt 2>&1 || { echo "Bot execution failed! Check logs:"; cat bot_logs.txt; exit 1; }
+        python3 -u writeup-watcher-v7.py 2>&1 | tee bot_logs.txt || { echo "Bot execution failed! Check logs:"; cat bot_logs.txt; exit 1; }
+        echo "📜 Bot logs:"
         cat bot_logs.txt
+        echo "📜 JSON logs:"
+        cat bot_json.log || echo "No JSON logs generated"
 
     - name: Debug JSON Content After Run
       run: |
         echo "🔍 Checking JSON files after bot run:"
-        for file in twitter_urls.json medium_urls.json stored_urls.json medium_posts.json medium_cache.json; do
+        for file in twitter_urls.json medium_urls.json reddit_urls.json stored_urls.json medium_posts.json reddit_posts.json medium_cache.json; do
           echo "Content of $file:"
           cat $file || echo "File is empty or does not exist"
         done
-
-    - name: Clean Old Cache Entries
-      run: |
-        python3 -c "
-        import json, time, filelock, os, random, shutil
-        from datetime import datetime
-        CACHE_FILE = 'medium_cache.json'
-        CACHE_EXPIRY = 86400  # 24 ساعت
-        log_file = 'cache_clean_log.json'
-        logs = []
-        for attempt in range(15):
-            try:
-                with filelock.FileLock(f'{CACHE_FILE}.lock', timeout=180):
-                    if os.path.exists(CACHE_FILE):
-                        shutil.copy(CACHE_FILE, f'{CACHE_FILE}.bak.{datetime.now().strftime(\"%Y%m%d_%H%M%S\")}')
-                    if not os.path.exists(CACHE_FILE):
-                        with open(CACHE_FILE, 'w') as f:
-                            json.dump({}, f, indent=2)
-                        logs.append({'file': CACHE_FILE, 'status': 'initialized', 'time': str(datetime.now())})
-                    else:
-                        try:
-                            with open(CACHE_FILE, 'r') as f:
-                                cache = json.load(f)
-                            current_time = time.time()
-                            cleaned_cache = {k: v for k, v in cache.items() if (current_time - v['timestamp']) < CACHE_EXPIRY}
-                            with open(CACHE_FILE, 'w') as f:
-                                json.dump(cleaned_cache, f, indent=2)
-                            logs.append({'file': CACHE_FILE, 'status': 'cleaned', 'removed': len(cache) - len(cleaned_cache), 'time': str(datetime.now())})
-                        except json.JSONDecodeError:
-                            logs.append({'file': CACHE_FILE, 'status': 'repaired', 'time': str(datetime.now())})
-                            with open(CACHE_FILE, 'w') as f:
-                                json.dump({}, f, indent=2)
-                    break
-            except filelock.Timeout:
-                jitter = random.uniform(0, 1.5)
-                logs.append({'file': CACHE_FILE, 'status': 'lock_failed', 'attempt': attempt + 1, 'time': str(datetime.now())})
-                if attempt == 14:
-                    logs.append({'file': CACHE_FILE, 'status': 'lock_failed_permanently', 'time': str(datetime.now())})
-                    raise
-                time.sleep(2 + jitter)
-        with open(log_file, 'w') as f:
-            json.dump(logs, f, indent=2)
-        "
-        cat cache_clean_log.json || echo "No cache clean logs generated"
+        echo "📜 Checking bot_json.log:"
+        cat bot_json.log || echo "No JSON logs generated"
 
     - name: Debug Git Status
       run: |
@@ -171,20 +136,20 @@ jobs:
         cat changed_files.txt || echo "No changes detected"
 
     - name: Commit and Push Intel
-      if: steps.run-cyber-bot.outcome == 'success'  # فقط در صورت موفقیت اسکریپت
+      if: always()
       uses: stefanzweifel/git-auto-commit-action@v5
       with:
         commit_message: "CyberSentry: Updated intel files 🛡️"
-        file_pattern: "*.json bot_logs.txt changed_files.txt json_repair_log.json cache_clean_log.json"
+        file_pattern: "*.json bot_logs.txt bot_json.log changed_files.txt json_repair_log.json"
         commit_user_name: "CyberSentry[bot]"
         commit_user_email: "cybersentry@users.noreply.github.com"
-        commit_author: "CyberSentry <cybersentry@users.noreply.github.com>"
+        commit_author: "CyberSentry <cybersentry@users.noreply.github.com"
         skip_dirty_check: false
         branch: main
 
     - name: Clean Up Old Backups
       run: |
-        find . -name "*.bak.*" -mtime +1 -delete  # حذف بکاپ‌های قدیمی‌تر از 1 روز
+        find . -name "*.bak.*" -mtime +1 -delete
         echo "🧹 Cleaned up old backup files"
 
     - name: Notify Mission Status
@@ -205,13 +170,27 @@ jobs:
                         changed_files = f.read().splitlines()
                 except:
                     changed_files = ['No changes detected']
+                log_summary = ''
+                try:
+                    with open('bot_logs.txt', 'r') as f:
+                        log_summary = f.read()[-500:]
+                except:
+                    log_summary = 'No logs available'
+                json_log_summary = ''
+                try:
+                    with open('bot_json.log', 'r') as f:
+                        json_log_summary = f.read()[-500:]
+                except:
+                    json_log_summary = 'No JSON logs available'
                 message = (
                     f'🎯 *CyberSentry Mission Report* 🎯\n'
                     f'🛠 *Status*: {status}\n'
                     f'⏰ *Time*: ${{ github.event.schedule || 'Manual' }}\n'
                     f'📂 *Changed Files*: {\", \".join(changed_files) or \"None\"}\n'
                     f'🔗 *Run ID*: ${{ github.run_id }}\n'
-                    f'🚀 *New intel secured in the vault!*'
+                    f'📜 *Log Summary*: ```\n{log_summary}\n```\n'
+                    f'📜 *JSON Log Summary*: ```\n{json_log_summary}\n```\n'
+                    f'🚀 *Mission Complete!*'
                 )
                 await bot.send_message(chat_id='$TELEGRAM_CHAT_ID', text=message, parse_mode='Markdown')
             except Exception as e:
