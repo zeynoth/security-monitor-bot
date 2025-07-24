@@ -7,6 +7,7 @@ on:
   push:
     paths:
       - 'writeup-watcher-v9.py'
+      - 'notify.py'
       - 'requirements.txt'
 
 concurrency:
@@ -16,7 +17,7 @@ concurrency:
 jobs:
   run-cyber-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 60  # افزایش timeout به 60 دقیقه
+    timeout-minutes: 60
 
     steps:
     - name: Checkout the Cyber Vault
@@ -41,7 +42,25 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip show python-telegram-bot || echo "python-telegram-bot not installed"
         pip list  # Debug: List installed packages
+
+    - name: Test Telegram Notification
+      env:
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        python3 -c "
+        import telegram, asyncio
+        async def test_notification():
+            try:
+                bot = telegram.Bot(token='$TELEGRAM_TOKEN')
+                await bot.send_message(chat_id='$TELEGRAM_CHAT_ID', text='🔔 Test notification from CyberSentry', parse_mode='Markdown')
+                print('Test notification sent successfully')
+            except Exception as e:
+                print(f'Failed to send test notification: {e}')
+        asyncio.run(test_notification())
+        "
 
     - name: Initialize and Repair JSON Files
       run: |
@@ -49,12 +68,9 @@ jobs:
         import json, os, filelock, random, shutil, time
         from datetime import datetime
         files = [
-            ('twitter_urls.json', []),
             ('medium_urls.json', []),
-            ('reddit_urls.json', []),
             ('stored_urls.json', []),
             ('medium_posts.json', []),
-            ('reddit_posts.json', []),
             ('medium_cache.json', {})
         ]
         log_file = 'json_repair_log.json'
@@ -96,7 +112,7 @@ jobs:
         pwd
         ls -la
         echo "🔍 Checking JSON files:"
-        for file in twitter_urls.json medium_urls.json reddit_urls.json stored_urls.json medium_posts.json reddit_posts.json medium_cache.json; do
+        for file in medium_urls.json stored_urls.json medium_posts.json medium_cache.json; do
           echo "Content of $file:"
           cat $file || echo "File is empty or does not exist"
         done
@@ -118,7 +134,7 @@ jobs:
     - name: Debug JSON Content After Run
       run: |
         echo "🔍 Checking JSON files after bot run:"
-        for file in twitter_urls.json medium_urls.json reddit_urls.json stored_urls.json medium_posts.json reddit_posts.json medium_cache.json; do
+        for file in medium_urls.json stored_urls.json medium_posts.json medium_cache.json; do
           echo "Content of $file:"
           cat $file || echo "File is empty or does not exist"
         done
@@ -147,53 +163,18 @@ jobs:
         skip_dirty_check: false
         branch: main
 
-    - name: Clean Up Old Backups
-      run: |
-        find . -name "*.bak.*" -mtime +1 -delete
-        echo "🧹 Cleaned up old backup files"
-
     - name: Notify Mission Status
       if: always()
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        JOB_STATUS: ${{ job.status }}
+        EVENT_SCHEDULE: ${{ github.event.schedule || 'Manual' }}
+        RUN_ID: ${{ github.run_id }}
       run: |
-        python3 -c "
-        import telegram, asyncio, json
-        async def send_notification():
-            try:
-                bot = telegram.Bot(token='$TELEGRAM_TOKEN')
-                status = 'Success 🟢' if '${{ job.status }}' == 'success' else 'Failed 🔴'
-                changed_files = []
-                try:
-                    with open('changed_files.txt', 'r') as f:
-                        changed_files = f.read().splitlines()
-                except:
-                    changed_files = ['No changes detected']
-                log_summary = ''
-                try:
-                    with open('bot_logs.txt', 'r') as f:
-                        log_summary = f.read()[-500:]
-                except:
-                    log_summary = 'No logs available'
-                json_log_summary = ''
-                try:
-                    with open('bot_json.log', 'r') as f:
-                        json_log_summary = f.read()[-500:]
-                except:
-                    json_log_summary = 'No JSON logs available'
-                message = (
-                    f'🎯 *CyberSentry Mission Report* 🎯\n'
-                    f'🛠 *Status*: {status}\n'
-                    f'⏰ *Time*: ${{ github.event.schedule || 'Manual' }}\n'
-                    f'📂 *Changed Files*: {\", \".join(changed_files) or \"None\"}\n'
-                    f'🔗 *Run ID*: ${{ github.run_id }}\n'
-                    f'📜 *Log Summary*: ```\n{log_summary}\n```\n'
-                    f'📜 *JSON Log Summary*: ```\n{json_log_summary}\n```\n'
-                    f'🚀 *Mission Complete!*'
-                )
-                await bot.send_message(chat_id='$TELEGRAM_CHAT_ID', text=message, parse_mode='Markdown')
-            except Exception as e:
-                print(f'Failed to send Telegram notification: {e}')
-        asyncio.run(send_notification())
-        "
+        python3 notify.py
+
+    - name: Clean Up Old Backups
+      run: |
+        find . -name "*.bak.*" -mtime +1 -delete
+        echo "🧹 Cleaned up old backup files"
